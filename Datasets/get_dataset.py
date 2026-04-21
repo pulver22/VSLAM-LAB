@@ -44,6 +44,7 @@ from Datasets.dataset_files.dataset_vitum import VITUM_dataset
 from Datasets.dataset_files.dataset_videos import VIDEOS_dataset
 from Datasets.dataset_files.dataset_iphone import IPHONE_dataset
 from Datasets.dataset_files.dataset_youtube import YOUTUBE_dataset
+from Datasets.dataset_files.dataset_strayscanner import StrayScanner_dataset
 
 SCRIPT_LABEL = f"\033[95m[{Path(__file__).name}]\033[0m "
 
@@ -83,7 +84,8 @@ def get_dataset(dataset_name, benchmark_path):
         # Development
         "videos": lambda: VIDEOS_dataset(benchmark_path),
         "iphone": lambda: IPHONE_dataset(benchmark_path),
-        "youtube": lambda: YOUTUBE_dataset(benchmark_path)
+        "youtube": lambda: YOUTUBE_dataset(benchmark_path),
+        "strayscanner": lambda: StrayScanner_dataset(benchmark_path)
     }
 
     return switcher.get(dataset_name, lambda: "Invalid case")()
