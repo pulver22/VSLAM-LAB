@@ -1,0 +1,32 @@
+dataset_name: strayscanner
+
+rgb_hz: 60.0
+modes: ['mono', 'rgbd']
+cam_models: ['pinhole']
+
+huggingface_repo_id: vslamlab/strayscanner
+target_resolution: [640, 480]
+
+depth_factor: 1000.0 # Depth in meters = depth_value / depth_factor
+
+sequence_names:
+  - iphone_s11_demo
+  - 38e1a006fc
+
+sequence_location:
+  - local
+  - huggingface
+
+about:
+  license: MIT
+  summary: An app for collecting raw RGB-D scans on iOS devices.
+  homepage: https://docs.strayrobots.io/
+  authors:
+    - Kenneth Blomqvist
+    - Martin Smith
+    - Sihat Afnan
+
+vslamlab_maintainer:
+  name: Nicolas Marticorena
+  email: nicolas.marticorena@qut.edu.au
+  date: 2026-04-21

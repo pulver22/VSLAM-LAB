@@ -30,13 +30,13 @@ class VIDEOS_dataset(DatasetVSLAMLab):
         self.videos_path = VSLAMLAB_VIDEOS
 
         # Get download url
-        self.repo_id = cfg["repo_id"]
+        self.repo_id = cfg["huggingface_repo_id"]
 
         # Create sequence_nicknames
         self.sequence_nicknames = self.sequence_names
 
         # Get resolution size
-        self.resolution_size = cfg["resolution_size"]
+        self.target_resolution = cfg.get("target_resolution", None)
 
     def download_sequence_data(self, sequence_name: str) -> None:
         if HUGGINGFACE_TOKEN is not None:
@@ -75,7 +75,7 @@ class VIDEOS_dataset(DatasetVSLAMLab):
                 break
 
         if not rgb_path.exists():
-            self.extract_png_frames(video_path=video_path, output_dir=rgb_path)  # extract at 30Hz
+            self.extract_png_frames(video_path=video_path, output_dir=rgb_path, target_resolution=self.target_resolution)  # extract at 30Hz
 
     def create_rgb_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
@@ -120,13 +120,24 @@ class VIDEOS_dataset(DatasetVSLAMLab):
             w.writerow(["ts (ns)", "tx (m)", "ty (m)", "tz (m)", "qx", "qy", "qz", "qw"])
         tmp.replace(groundtruth_csv)
 
-    def extract_png_frames(self, video_path: Path, output_dir: Path, ti: float = 0.0, tf: float = None):
+    def estimate_new_resolution(self, original_width: int, original_height: int, target_resolution: list[int] | None = None) -> tuple[int, int]:
+        if target_resolution is None:
+            return original_width, original_height
+
+        scaled_height = np.sqrt(
+            target_resolution[0] * target_resolution[1] * original_height / original_width
+        )
+        scaled_width = target_resolution[0] * target_resolution[1] / scaled_height
+        return int(scaled_width), int(scaled_height)
+
+    def extract_png_frames(self, video_path: Path, output_dir: Path, target_resolution: list[int] | None = None, ti: float = 0.0, tf: float = None):
         """
         Extract frames from a video based on a frequency in Hertz (frames per second) and save as PNG images.
         Also creates an rgb.txt file with timestamps and image paths.
         Args:
             video_path (str): Path to the input video file.
             output_dir (str): Directory to save the PNG files.
+            target_resolution (list[int] | None): Target resolution for the output frames.
             ti (float): Start time in seconds. Defaults to 0.
             tf (float): End time in seconds. Defaults to end of video.
         """
@@ -162,6 +173,7 @@ class VIDEOS_dataset(DatasetVSLAMLab):
         frame_idx = start_frame
         saved_idx = 0
         timestamp_list = []
+        scale_image = target_resolution is not None
         estimate_new_resolution = True
 
         while frame_idx <= end_frame:
@@ -176,17 +188,19 @@ class VIDEOS_dataset(DatasetVSLAMLab):
                 # Convert to RGB
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                if estimate_new_resolution:
+                if estimate_new_resolution and scale_image:
                     rgb_frame_height, rgb_frame_width = rgb_frame.shape[:2]
                     scaled_height = np.sqrt(
-                        self.target_resolution[0] * self.target_resolution[1] * rgb_frame_height / rgb_frame_width
+                        target_resolution[0] * target_resolution[1] * rgb_frame_height / rgb_frame_width
                     )
-                    scaled_width = self.target_resolution[0] * self.target_resolution[1] / scaled_height
+                    scaled_width = target_resolution[0] * target_resolution[1] / scaled_height
                     scaled_height = int(scaled_height)
                     scaled_width = int(scaled_width)
                     estimate_new_resolution = False
-
-                resized_img = cv2.resize(rgb_frame, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+                if scale_image:
+                    resized_img = cv2.resize(rgb_frame, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+                else:
+                    resized_img = rgb_frame
 
                 # Save as PNG with 5-digit padded integer filename
                 filename = output_dir / f"{saved_idx:05d}.png"
