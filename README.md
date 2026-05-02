@@ -192,6 +192,10 @@ To [awesome-slam-datasets](https://github.com/youngguncho/awesome-slam-datasets)
 | [**The UT Campus Object Dataset**](https://amrl.cs.utexas.edu/coda/) | 📸🏞️🤖 |  `ut-coda`  |`mono` `stereo`| `radtan5` |
 | [**Sesoko campaign**](https://www.southampton.ac.uk/smmi/news/2017/06/20-southampton-tokyo-collaboration.page) | 📸🏞️🌊 |    `sesoko`    |`mono` | `pinhole` |
 | [**The MADMAX data set for visual-inertial rover navigation on Mars**](https://datasets.arches-projekt.de/morocco2018/) |  📸🏞️🤳 | `madmax` | `mono(-vi)` `stereo(-vi)`| `pinhole` |
+
+| Tools                                                                                                                        | Features |   Label    |     Sensors      |  Camera Models     |
+|:--------------------------------------------------------------------------------------------------------------------------------|:---------:|:-----------:|:----------:|:----------:|
+| [**Stray Scanner App**](https://github.com/strayrobots/scanner) |  📸🤳 | `strayscanner` | `mono` `rgbd` | `pinhole` |
 <!-- | [**Sweet Corals**](https://huggingface.co/datasets/wildflow/sweet-corals) | 📸🏞️🌊 |    `sweetcorals`    |`mono` | `pinhole` | -->
 <!-- | [**Ariel**](https://huggingface.co/datasets/ntnu-arl/underwater-datasets) | 📸🏞️🌊 |    `ariel`    |`mono(-vi)` `stereo(-vi)`  | `equid4` | -->
 <!-- | [**HILTI Challenge Dataset 2022**](https://hilti-challenge.com/dataset-2022) | 📸🏠🏞️🤳 |    `hilti2022`    |`mono(-vi)` `stereo(-vi)`  | `equid4` | -->

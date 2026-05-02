@@ -1,31 +1,37 @@
 from __future__ import annotations
 
 import csv
+import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import yaml
 import cv2
+import numpy as np
 import pandas
+import yaml
+from huggingface_hub import HfApi, HfFileSystem, login
+from huggingface_hub.utils import disable_progress_bars
 
+from Datasets.dataset_files.dataset_videos import VIDEOS_dataset
 from Datasets.DatasetVSLAMLab import DatasetVSLAMLab
-from path_constants import BENCHMARK_RETENTION, Retention
+from path_constants import BENCHMARK_RETENTION, HUGGINGFACE_TOKEN, Retention
+from utilities import decompressFile
 
 
-class StrayScanner_dataset(DatasetVSLAMLab):
-    """Iphone datsets from StrayScanner app"""
+class StrayScanner_dataset(VIDEOS_dataset):
+    """Iphone datasets from StrayScanner app"""
 
     def __init__(self, benchmark_path: str | Path, dataset_name: str = "strayscanner") -> None:
-        super().__init__(dataset_name, Path(benchmark_path))
+        DatasetVSLAMLab.__init__(self, dataset_name, Path(benchmark_path))
 
         # Load settings
         with open(self.yaml_file, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
         # Get download url
-        # self.url_download_root: str = cfg["url_download_root"]
+        self.repo_id = cfg["huggingface_repo_id"]
 
         # Sequence nicknames
         self.sequence_nicknames = self.sequence_names
@@ -33,9 +39,55 @@ class StrayScanner_dataset(DatasetVSLAMLab):
         # Depth factor
         self.depth_factor = cfg["depth_factor"]
 
+        # RGB frequency
+        self.rgb_hz = cfg["rgb_hz"]
+
+        # Sequence location
+        self.sequence_location = cfg["sequence_location"]
+
+        # Get resolution size
+        self.target_resolution = cfg.get("target_resolution", None)
+
     def download_sequence_data(self, sequence_name: str) -> None:
-        pass
-        # todo add hf
+        sequence_path = self.dataset_path / sequence_name
+        sequence_location = self.sequence_location[self.sequence_names.index(sequence_name)]
+        if sequence_location == "local":
+            print(
+                f"Sequence '{sequence_name}' is marked as 'local'. Please ensure the data is available at {self.dataset_path / sequence_name}."
+            )
+            return
+        else:
+            if HUGGINGFACE_TOKEN is not None:
+                login(token=HUGGINGFACE_TOKEN)
+                token = HUGGINGFACE_TOKEN
+            else:
+                token = os.environ.get("HF_TOKEN")
+
+            api = HfApi(token=token)
+            fs = HfFileSystem(token=token)
+            disable_progress_bars()
+
+            cache_file = self.dataset_path / "all_files_cache.json"
+            if cache_file.exists():
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    all_files = json.load(f)
+            else:
+                all_files = api.list_repo_files(repo_id=self.repo_id, repo_type="dataset")
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(all_files, f, indent=2)
+                print(f"Fetched and cached {len(all_files)} files")
+
+            for f in all_files:
+                if sequence_name in f:
+                    local_file = self.dataset_path / f
+                    if not local_file.exists():
+                        fs.get_file(f"datasets/{self.repo_id}/{f}", str(local_file))
+                    break
+
+        if not sequence_path.exists():
+            compressed_name = f"{sequence_name}.zip"
+            compressed_file = self.dataset_path / compressed_name
+            decompressFile(str(compressed_file), str(self.dataset_path))
 
     def create_rgb_folder(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
@@ -46,9 +98,19 @@ class StrayScanner_dataset(DatasetVSLAMLab):
                 src.replace(tgt)
 
         if not (sequence_path / "rgb_0").exists():
-            self.extract_png_frames(sequence_path / "rgb.mp4", sequence_path / "rgb_0")
+            self.extract_png_frames(
+                video_path=sequence_path / "rgb.mp4",
+                output_dir=sequence_path / "rgb_0",
+                target_resolution=self.target_resolution,
+            )
 
-
+        depth_dir = self.dataset_path / sequence_name / "depth_0"
+        for depth_file in sorted(depth_dir.glob("*.png")):
+            img = cv2.imread(str(depth_file), cv2.IMREAD_UNCHANGED)  # keep 16-bit
+            if img.shape[:2] != (self.target_resolution[1], self.target_resolution[0]):
+                img = cv2.resize(img, (self.target_resolution[0], self.target_resolution[1]),
+                                 interpolation=cv2.INTER_NEAREST)
+                cv2.imwrite(str(depth_file), img)
 
     def create_rgb_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
@@ -70,7 +132,10 @@ class StrayScanner_dataset(DatasetVSLAMLab):
                 ts_r0_ns = int(float(ts) * 1e9)
                 ts_d_ns = int(float(ts) * 1e9)
 
-                w.writerow([ts_r0_ns, rgb_path.format(idx=i), ts_d_ns, depth_path.format(idx=i)])
+                rgb_file = sequence_path / rgb_path.format(idx=i)
+                depth_file = sequence_path / depth_path.format(idx=i)
+                if rgb_file.exists() and depth_file.exists():
+                    w.writerow([ts_r0_ns, rgb_path.format(idx=i), ts_d_ns, depth_path.format(idx=i)])
         tmp.replace(rgb_csv)
 
     def create_calibration_yaml(self, sequence_name: str) -> None:
@@ -82,6 +147,23 @@ class StrayScanner_dataset(DatasetVSLAMLab):
         fy = odometry_csv[" fy"].iloc[0].item()
         cx = odometry_csv[" cx"].iloc[0].item()
         cy = odometry_csv[" cy"].iloc[0].item()
+
+        if self.target_resolution is not None:
+            video_path = sequence_path / "rgb.mp4"
+            cap = cv2.VideoCapture(video_path)
+            original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+
+            scaled_width, scaled_height = self.estimate_new_resolution(
+                original_width, original_height, self.target_resolution
+            )
+            scale_factor_x = scaled_width / original_width
+            scale_factor_y = scaled_height / original_height
+            fx *= scale_factor_x
+            fy *= scale_factor_y
+            cx *= scale_factor_x
+            cy *= scale_factor_y
 
         rgbd0: dict[str, Any] = {
             "cam_name": "rgb_0",
@@ -107,70 +189,6 @@ class StrayScanner_dataset(DatasetVSLAMLab):
             w.writerow(["ts (ns)", "tx (m)", "ty (m)", "tz (m)", "qx", "qy", "qz", "qw"])
             # Pending
         tmp.replace(groundtruth_csv)
-
-    def extract_png_frames(self, video_path: Path, output_dir: Path):
-        """
-        Extract frames from a video based on a frequency in Hertz (frames per second) and save as PNG images.
-        Also creates an rgb.txt file with timestamps and image paths.
-        Args:
-            video_path (str): Path to the input video file.
-            output_dir (str): Directory to save the PNG files.
-        """
-        output_dir.mkdir(parents=True, exist_ok=True)
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise IOError(f"Cannot open video file {video_path}")
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps <= 0:
-            raise ValueError("Failed to get FPS from video.")
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        video_duration = total_frames / fps
-
-        # Validate and clamp ti/tf
-        ti = 0.0
-        tf = video_duration
-
-        # Seek to start frame
-        start_frame = int(round(ti * fps))
-        end_frame = int(round(tf * fps))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
-        frame_interval = int(round(fps / self.rgb_hz))
-        print(f"Video opened: {video_path}")
-        print(f"Video FPS: {fps:.2f}")
-        print(f"Extracting {self.rgb_hz} frames per second (every {frame_interval} frames).")
-        print(f"Time range: {ti:.2f}s to {tf:.2f}s (frames {start_frame} to {end_frame})")
-
-        frame_idx = start_frame
-        saved_idx = 0
-        timestamp_list = []
-
-        while frame_idx <= end_frame:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            if (frame_idx - start_frame) % frame_interval == 0:
-                # Compute timestamp from the beginning of the video
-                timestamp_nsec = int(1e9 * frame_idx / fps)
-
-                # Convert to RGB
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                # Save as PNG with 5-digit padded integer filename
-                filename = output_dir / f"{saved_idx:05d}.png"
-                cv2.imwrite(str(filename), cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR))
-
-                # Save timestamp and image path
-                image_relative_path = output_dir / f"{saved_idx:05d}.png"
-                timestamp_list.append((timestamp_nsec, str(image_relative_path)))
-                saved_idx += 1
-
-            frame_idx += 1
-
-        cap.release()
 
     @staticmethod
     def _iter_entries(txt_path: Path, old_prefix: str, new_prefix: str) -> Iterable[tuple[str, str]]:
