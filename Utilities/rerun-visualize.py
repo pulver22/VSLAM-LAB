@@ -28,6 +28,10 @@ import rerun as rr
 import rerun.blueprint as rrb
 import yaml
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from path_constants import VSLAMLAB_BENCHMARK
 
 def load_calibration(calib_path: Path) -> dict:
     with open(calib_path) as f:
@@ -54,14 +58,15 @@ def build_intrinsic(cam: dict) -> tuple[np.ndarray, int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize a VSLAM-LAB sequence with Rerun")
-    parser.add_argument("--sequence_path", required=True, type=Path,
-                        help="Path to the sequence directory")
-    parser.add_argument("--max_frames", type=int, default=None,
-                        help="Cap the number of frames to load (default: all)")
+    parser.add_argument("--dataset_name", required=True, type=str,
+                        help="Dataset name (e.g. eth)")
+    parser.add_argument("--sequence_name", required=True, type=str,
+                        help="Sequence name (e.g. table_3)")
+
     rr.script_add_args(parser)
     args = parser.parse_args()
 
-    seq_path = args.sequence_path.resolve()
+    seq_path = VSLAMLAB_BENCHMARK / args.dataset_name.upper() / args.sequence_name
     if not seq_path.exists():
         print(f"Error: sequence path does not exist: {seq_path}", file=sys.stderr)
         sys.exit(1)
@@ -142,7 +147,7 @@ def main() -> None:
             rr.log("world", view_coords, static=True)
 
     # ── Per-frame logging ──────────────────────────────────────────────────────
-    rows = rgb_df.head(args.max_frames) if args.max_frames else rgb_df
+    rows = rgb_df
 
     for frame_idx, (_, row) in enumerate(rows.iterrows()):
         ts_ns = int(row.iloc[0])

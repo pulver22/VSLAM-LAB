@@ -1,6 +1,6 @@
 dataset_name: strayscanner
 
-rgb_hz: 60.0
+rgb_hz: 30.0
 modes: ['mono', 'rgbd']
 cam_models: ['pinhole']
 
@@ -11,7 +11,7 @@ depth_factor: 1000.0 # Depth in meters = depth_value / depth_factor
 
 sequence_names:
   - iphone_s11_demo
-  - 38e1a006fc
+  - old_parliament_house
 
 sequence_location:
   - local
