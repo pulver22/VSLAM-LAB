@@ -49,6 +49,7 @@ depth-anything = { features = ["depth-anything", "cuda126",  "py11"], solve-grou
 
 ros1 = { features = ["ros1"], solve-group = "ros1" }
 ros2 = { features = ["ros2"], solve-group = "ros2" }
+rerun = { features = ["rerun"], solve-group = "rerun" }
 
 # VSLAM-LAB main pipeline
 [feature.vslamlab]
@@ -1114,5 +1115,20 @@ tqdm = "*"
 pandas = "*"
 
 
+# ########################################################################################################################
+# ########################################################################################################################
+# rerun
+[feature.rerun]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
 
+[feature.rerun.tasks]
 
+[feature.rerun.dependencies]
+
+[dependencies]
+rerun-sdk = ">=0.22.1,<0.32"
+opencv = ">=4.11.0,<5"
+numpy = ">=1.26.4,<3"
+pandas = ">=2.3.3,<4"
+pyyaml = ">=6.0.2,<7"
