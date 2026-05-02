@@ -145,11 +145,16 @@ For a reference implementation, see the VGGT-SLAM integration in commit [259f7ae
 ## Citation
 If you're using **VSLAM-LAB** in your research, please cite:
 ```bibtex
-@article{fontan2025vslam,
-  title={VSLAM-LAB: A Comprehensive Framework for Visual SLAM Methods and Datasets},
+@INPROCEEDINGS{fontan2025vslam,
   author={Fontan, Alejandro and Fischer, Tobias and Civera, Javier and Milford, Michael},
-  journal={arXiv preprint arXiv:2504.04457},
-  year={2025}
+  booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  title={VSLAM-LAB: A Comprehensive Framework for Visual SLAM Methods and Datasets},
+  year={2025},
+  volume={},
+  number={},
+  pages={9013-9020},
+  keywords={Visualization;Simultaneous localization and mapping;Robot vision systems;Standardization;Benchmark testing;Programming;Reproducibility of results;Intelligent robots;Faces;Software development management},
+  doi={10.1109/IROS60139.2025.11247218}
 }
 ```
 
