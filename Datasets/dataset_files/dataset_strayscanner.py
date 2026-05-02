@@ -181,13 +181,17 @@ class StrayScanner_dataset(VIDEOS_dataset):
     def create_groundtruth_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
         odometry_csv = pandas.read_csv(sequence_path / "odometry.csv")
+        assert isinstance(odometry_csv, pandas.DataFrame) and not odometry_csv.empty, "odometry.csv is missing or empty"
         groundtruth_csv = sequence_path / "groundtruth.csv"
         tmp = groundtruth_csv.with_suffix(".csv.tmp")
 
         with open(tmp, "w", newline="", encoding="utf-8") as fout:
             w = csv.writer(fout)
             w.writerow(["ts (ns)", "tx (m)", "ty (m)", "tz (m)", "qx", "qy", "qz", "qw"])
-            # Pending
+            for _, row in odometry_csv.iterrows():
+                ts_ns = int(float(row["timestamp"]) * 1e9)
+                w.writerow([ts_ns, row[" x"], row[" y"], row[" z"],
+                            row[" qx"], row[" qy"], row[" qz"], row[" qw"]])
         tmp.replace(groundtruth_csv)
 
     @staticmethod
