@@ -26,7 +26,7 @@ class YOUTUBE_dataset(VIDEOS_dataset):
         self.sequence_nicknames = self.sequence_names
 
         # Get target resolution
-        self.target_resolution = cfg["target_resolution"]
+        self.target_resolution = cfg.get("target_resolution", None)
 
         # Get time windows
         self.time_windows = cfg.get("time_windows", [[0, None] for _ in self.sequence_names])
@@ -57,6 +57,7 @@ class YOUTUBE_dataset(VIDEOS_dataset):
             self.extract_png_frames(
                 video_path=video_path,
                 output_dir=rgb_path,
+                target_resolution=self.target_resolution,
                 ti=self.time_windows[seq_index][0],
                 tf=self.time_windows[seq_index][1],
             )
