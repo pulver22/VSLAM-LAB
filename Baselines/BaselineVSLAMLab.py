@@ -16,6 +16,7 @@ from pathlib import Path
 
 import signal
 import subprocess
+import sys
 import psutil
 import threading
 import time
@@ -209,7 +210,7 @@ class BaselineVSLAMLab(ABC):
                     self.kill_process(process)
                     break
 
-                if swap_perc > MAX_SWAP_PERC:
+                if sys.platform == "linux" and swap_perc > MAX_SWAP_PERC:
                     msg = f"Swap threshold exceeded: {swap_used:.1f}/{swap_max:.1f} GB (> {MAX_SWAP_PERC:.0%})"
                     print_msg(SCRIPT_LABEL, msg, 'error')
                     success_flag[0] = False
