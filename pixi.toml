@@ -3,7 +3,7 @@ name = "VSLAM-LAB"
 version = "0.1.0"
 description = "VSLAM-LAB"
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [tasks]
 clean-swap = { cmd = "sudo /sbin/swapoff -a && sudo /sbin/swapon -a" }
@@ -54,7 +54,7 @@ rerun = { features = ["rerun"], solve-group = "rerun" }
 # VSLAM-LAB main pipeline
 [feature.vslamlab]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.vslamlab.tasks]
 vslamlab.cmd = "python vslamlab_gui.py vslamlab {{ exp_yaml }} {{ overwrite }}"
@@ -264,8 +264,8 @@ open3d = "==0.17.0"
 ########################################################################################################################
 # orbslam2
 [feature.orbslam2]
-channels = ["https://prefix.dev/conda-forge", "fontan"]
-platforms = ["linux-64"]
+channels = ["https://prefix.dev/conda-forge", "fontan", "tobiasrobotics"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.orbslam2.tasks]
 git-clone = 'git clone https://huggingface.co/vslamlab/orbslam2-vslamlab Baselines/ORB-SLAM2'
@@ -274,9 +274,8 @@ execute-rgbd = 'vslamlab_orbslam2_rgbd'
 execute-stereo = 'vslamlab_orbslam2_stereo'
 
 [feature.orbslam2.dependencies]
-orbslam2-vslamlab = { channel = "fontan" }
-pangolin = { channel = "fontan" }
-opencv = "==4.12.0"
+orbslam2-vslamlab = "*"
+pangolin = "*"
 
 ########################################################################################################################
 ########################################################################################################################
