@@ -256,9 +256,7 @@ rich = "*"
 trimesh = "*"
 evo = "*"
 torchmetrics = "*"
-
-[feature.monogs.pypi-dependencies]
-open3d = "==0.17.0"
+open3d = "*"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -302,7 +300,7 @@ opencv = { channel = "fontan" }
 # colmap
 [feature.colmap]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.colmap.system-requirements]
 cuda = "12.6"
@@ -312,7 +310,6 @@ git-clone = { cmd = 'git clone https://huggingface.co/vslamlab/colmap-vslamlab c
 execute-mono = './Baselines/colmap/colmap_reconstruction.sh'
 
 [feature.colmap.dependencies]
-colmap = { build = "*cuda*" }
 yq = "*"
 numpy = "*"
 scipy = "*"
@@ -320,6 +317,12 @@ pandas = "*"
 sqlite = "*"
 opencv = "*"
 tqdm = "*"
+
+[feature.colmap.target.linux-64.dependencies]
+colmap = { build = "*cuda*" }
+
+[feature.colmap.target.osx-arm64.dependencies]
+colmap = "*"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -335,8 +338,9 @@ cuda = "12.6"
 git-clone = { cmd = 'git clone https://huggingface.co/vslamlab/glomap-vslamlab glomap', cwd = 'Baselines' }
 execute-mono = { cmd = './Baselines/glomap/glomap_reconstruction.sh' }
 
-[feature.glomap.dependencies]
+[feature.glomap.target.linux-64.dependencies]
 glomap = { build = "*cuda*"}
+
 
 ########################################################################################################################
 ########################################################################################################################
@@ -357,7 +361,7 @@ execute-stereo-vi = 'vslamlab_orbslam3_stereo_vi'
 [feature.orbslam3.dependencies]
 orbslam3-vslamlab = { channel = "fontan" }
 pangolin = { channel = "fontan" }
-opencv = ">=4.10.0 ,<5"
+opencv = ">=4.10.0,<5"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -471,7 +475,7 @@ channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64"]
 
 [feature.cuda126.system-requirements]
-cuda = "12.0"
+cuda = "12.6"
 
 [feature.cuda126.dependencies]
 # CUDA Build Tools
@@ -503,7 +507,7 @@ libnvjitlink = "*"
 # py10
 [feature.py10]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.py10.dependencies]
 python = "3.10.*"
@@ -514,7 +518,7 @@ pip = "*"
 # py11
 [feature.py11]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.py11.dependencies]
 python = "3.11.*"
@@ -525,7 +529,7 @@ pip = "*"
 # x11
 [feature.x11]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 [feature.x11.dependencies]
 xorg-libxext = "*"
@@ -537,15 +541,17 @@ xorg-libsm = "*"
 xorg-libxdmcp = "*"
 xorg-libxau = "*"
 xorg-xorgproto = "*"
+
+[feature.x11.target.linux-64.dependencies]
 libxkbcommon = "*"
 
 # ########################################################################################################################
 # opengl
 [feature.opengl]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
-[feature.opengl.dependencies]
+[feature.opengl.target.linux-64.dependencies]
 libgl-devel = "*"
 libegl-devel = "*"
 libglvnd-devel = "*"
@@ -766,9 +772,7 @@ rich = "*"
 ruff = "*"
 nbformat = "==5.7.0"
 pyglfw = "*"
-
-[feature.monogs-dev.pypi-dependencies]
-open3d = "==0.17.0"
+open3d = "*"
 
 ########################################################################################################################
 ########################################################################################################################
