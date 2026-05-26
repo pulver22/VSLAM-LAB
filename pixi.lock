@@ -3506,9 +3506,9 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/exceptiongroup-1.3.1-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/executing-2.2.1-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/exifread-3.5.1-pyhd8ed1ab_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.1-h9093a4d_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.3-h5ddb490_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/fastapi-cli-0.0.23-pyhcf101f3_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.3-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/filelock-3.29.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/flask-3.1.3-pyhcf101f3_1.conda
       - conda: https://prefix.dev/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
@@ -3632,7 +3632,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/snuggs-1.4.7-pyhd8ed1ab_2.conda
       - conda: https://prefix.dev/conda-forge/noarch/soupsieve-2.8.4-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/stack_data-0.6.3-pyhd8ed1ab_1.conda
-      - conda: https://prefix.dev/conda-forge/noarch/starlette-1.0.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/starlette-1.1.0-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/sympy-1.14.0-pyh2585a3b_106.conda
       - conda: https://prefix.dev/conda-forge/noarch/sysroot_linux-64-2.28-h4ee821c_9.conda
       - conda: https://prefix.dev/conda-forge/noarch/texttable-1.7.0-pyhd8ed1ab_1.conda
@@ -7363,9 +7363,9 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/evo-1.36.5-pyhc364b38_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/exceptiongroup-1.3.1-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/executing-2.2.1-pyhd8ed1ab_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.1-h9093a4d_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.3-h5ddb490_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/fastapi-cli-0.0.23-pyhcf101f3_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.3-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/ffmpy-0.3.0-pyhb6f538c_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/filelock-3.29.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
@@ -7458,7 +7458,7 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/sniffio-1.3.1-pyhd8ed1ab_2.conda
       - conda: https://prefix.dev/conda-forge/noarch/snuggs-1.4.7-pyhd8ed1ab_2.conda
       - conda: https://prefix.dev/conda-forge/noarch/stack_data-0.6.3-pyhd8ed1ab_1.conda
-      - conda: https://prefix.dev/conda-forge/noarch/starlette-1.0.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/starlette-1.1.0-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/sympy-1.14.0-pyh2585a3b_106.conda
       - conda: https://prefix.dev/conda-forge/noarch/sysroot_linux-64-2.28-h4ee821c_9.conda
       - conda: https://prefix.dev/conda-forge/noarch/tensorboard-2.20.0-pyhe01879c_1.conda
@@ -15229,9 +15229,9 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/email_validator-2.3.0-hd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/exceptiongroup-1.3.1-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/executing-2.2.1-pyhd8ed1ab_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.1-h9093a4d_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.3-h5ddb490_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/fastapi-cli-0.0.23-pyhcf101f3_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.3-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/ffmpy-0.3.0-pyhb6f538c_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/filelock-3.29.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
@@ -16316,9 +16316,9 @@ environments:
       - conda: https://prefix.dev/conda-forge/noarch/email_validator-2.3.0-hd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/exceptiongroup-1.3.1-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/executing-2.2.1-pyhd8ed1ab_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.1-h9093a4d_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.3-h5ddb490_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/fastapi-cli-0.0.23-pyhcf101f3_0.conda
-      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.1-pyhcf101f3_0.conda
+      - conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.3-pyhcf101f3_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/ffmpy-0.3.0-pyhb6f538c_0.tar.bz2
       - conda: https://prefix.dev/conda-forge/noarch/filelock-3.29.0-pyhd8ed1ab_0.conda
       - conda: https://prefix.dev/conda-forge/noarch/flask-3.1.3-pyhcf101f3_1.conda
@@ -51505,11 +51505,11 @@ packages:
   run_exports: {}
   size: 54614
   timestamp: 1756007421417
-- conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.1-h9093a4d_0.conda
-  sha256: a760957075438e1e749f97dbf11593e4071a19d590a9d74425abf79754d72c3e
-  md5: 4de4a392af60d8d9db2352a7fc8cd5f9
+- conda: https://prefix.dev/conda-forge/noarch/fastapi-0.136.3-h5ddb490_0.conda
+  sha256: 5e3817e17e302f243c4b152d8202431731be0d8a629951e28348ec329d7a5957
+  md5: 966cdb82bffe2677a8bc33a458c05675
   depends:
-  - fastapi-core ==0.136.1 pyhcf101f3_0
+  - fastapi-core ==0.136.3 pyhcf101f3_0
   - email_validator
   - fastapi-cli
   - fastar
@@ -51520,10 +51520,9 @@ packages:
   - python-multipart
   - uvicorn-standard
   license: MIT
-  license_family: MIT
   run_exports: {}
-  size: 4839
-  timestamp: 1776987546878
+  size: 4840
+  timestamp: 1779758767257
 - conda: https://prefix.dev/conda-forge/noarch/fastapi-cli-0.0.23-pyhcf101f3_0.conda
   sha256: cb60fc8c96dcd2a6335914d4d6d7d5f5549c9e1ff4533be28ba699e648babf37
   md5: 442ec6511754418c87a84bc1dc0c5384
@@ -51539,9 +51538,9 @@ packages:
   run_exports: {}
   size: 18920
   timestamp: 1771293215825
-- conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.1-pyhcf101f3_0.conda
-  sha256: 034400313fcb495099db57be03131fb92fb334fa678ed7f59cd4c2f79688fcbf
-  md5: c5bdeaf4ffe949c341a82befffd9fa75
+- conda: https://prefix.dev/conda-forge/noarch/fastapi-core-0.136.3-pyhcf101f3_0.conda
+  sha256: b9a0a6e01610cbfc92caa121bc7e1d79989a0233b4c98a5a3ef9a41f4f08ecaf
+  md5: af1c276d3cf531c643f89ec242d91564
   depends:
   - python >=3.10
   - annotated-doc >=0.0.2
@@ -51561,10 +51560,9 @@ packages:
   - python-multipart >=0.0.18
   - uvicorn-standard >=0.12.0
   license: MIT
-  license_family: MIT
   run_exports: {}
-  size: 95882
-  timestamp: 1776987546878
+  size: 95535
+  timestamp: 1779758767257
 - conda: https://prefix.dev/conda-forge/noarch/ffmpy-0.3.0-pyhb6f538c_0.tar.bz2
   sha256: 19e8500b169244e2ab0df3d086c3040c0cd96631781bb16c9045a0b2e6ea6e61
   md5: 6ac23fb78d7234152221fea00aeb11c8
@@ -54760,19 +54758,18 @@ packages:
   run_exports: {}
   size: 64896
   timestamp: 1768919444896
-- conda: https://prefix.dev/conda-forge/noarch/starlette-1.0.1-pyhcf101f3_0.conda
-  sha256: 056337f0e1242f87bf6bc3737c232c9252d29d658bc65d518a255b7cbc443394
-  md5: 635faa8ce3a592deb2a12d71e891f697
+- conda: https://prefix.dev/conda-forge/noarch/starlette-1.1.0-pyhcf101f3_0.conda
+  sha256: 30db6876ebbbdc34fcacfedf17f943686f973546f18e1cbf4e39fce6db8725bc
+  md5: 6936d0dc52cbd3a154ee01b06abb7234
   depends:
   - anyio >=3.6.2,<5
   - python >=3.10
   - typing_extensions >=4.10.0
   - python
   license: BSD-3-Clause
-  license_family: BSD
   run_exports: {}
-  size: 63638
-  timestamp: 1779412822173
+  size: 63720
+  timestamp: 1779758800494
 - conda: https://prefix.dev/conda-forge/noarch/sympy-1.14.0-pyh2585a3b_106.conda
   sha256: 1c8057e6875eba958aa8b3c1a072dc9a75d013f209c26fd8125a5ebd3abbec0c
   md5: 32d866e43b25275f61566b9391ccb7b5
