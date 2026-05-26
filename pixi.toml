@@ -263,7 +263,7 @@ open3d = "*"
 # orbslam2
 [feature.orbslam2]
 channels = ["https://prefix.dev/conda-forge", "fontan", "tobiasrobotics"]
-platforms = ["linux-64", "osx-arm64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.orbslam2.tasks]
 git-clone = 'git clone https://huggingface.co/vslamlab/orbslam2-vslamlab Baselines/ORB-SLAM2'
