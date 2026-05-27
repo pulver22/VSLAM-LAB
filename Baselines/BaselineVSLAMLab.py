@@ -12,6 +12,7 @@ BaselineVSLAMLab: A class to handle Visual SLAM baseline-related operations.
 """
 
 import os
+import platform
 from pathlib import Path
 
 import signal
@@ -156,11 +157,18 @@ class BaselineVSLAMLab(ABC):
     ####################################################################################################################
     # Execute methods
     def kill_process(self, process):
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        if platform.system() == 'Windows':
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         print_msg(SCRIPT_LABEL, "Process killed.",'error')
 
     def monitor_memory(self, process, interval, comment_queue, success_flag, memory_stats):
@@ -253,10 +261,11 @@ class BaselineVSLAMLab(ABC):
         memory_stats = {}
         with open(log_file_path, 'w') as log_file:
             print(f"{ws(8)}log file: {log_file_path}")
+            _popen_kwargs = {} if platform.system() == 'Windows' else {'preexec_fn': os.setsid}
             if VerbosityManager[VSLAMLAB_VERBOSITY] <= VerbosityManager['LOW']:
-                process = subprocess.Popen(command, shell=True, stdout=log_file, stderr=log_file, text=True, preexec_fn=os.setsid)
+                process = subprocess.Popen(command, shell=True, stdout=log_file, stderr=log_file, text=True, **_popen_kwargs)
             else:
-                process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid)
+                process = subprocess.Popen(command, shell=True, **_popen_kwargs)
 
             memory_thread = threading.Thread(target=self.monitor_memory, args=(process, 10, comment_queue, success_flag, memory_stats))
             memory_thread.start()
