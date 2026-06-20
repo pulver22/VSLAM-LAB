@@ -28,6 +28,7 @@ from Datasets.dataset_files.dataset_s3li import S3LI_dataset
 from Datasets.dataset_files.dataset_msd import MSD_dataset
 from Datasets.dataset_files.dataset_openloris import OPENLORIS_d400_dataset
 from Datasets.dataset_files.dataset_openloris import OPENLORIS_t265_dataset
+from Datasets.dataset_files.dataset_bacchus import BACCHUS_dataset
 
 # Development
 from Datasets.dataset_vitum import VITUM_dataset
@@ -72,6 +73,7 @@ def get_dataset(dataset_name, benchmark_path):
         "7scenes": lambda: SEVENSCENES_dataset(benchmark_path),
         "openloris-d400": lambda: OPENLORIS_d400_dataset(benchmark_path),
         "openloris-t265": lambda: OPENLORIS_t265_dataset(benchmark_path),
+        "bacchus": lambda: BACCHUS_dataset(benchmark_path),
 
         # Development
         "vitum": lambda: VITUM_dataset(benchmark_path),

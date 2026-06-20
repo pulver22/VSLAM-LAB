@@ -1,0 +1,27 @@
+dataset_name: bacchus
+
+rgb_hz: 10.0
+modes: ["mono"]
+cam_models: ["pinhole"]
+
+source_root_env: BACCHUS_KTIMA_ROOT
+source_root_default: /media/pulver/PulverHDD/BACCHUS/ktima
+image_topic_env: BACCHUS_IMAGE_TOPIC
+image_topic: /front/zed_node/rgb/image_rect_color/compressed
+max_frames_env: BACCHUS_MAX_FRAMES
+max_frames: 200
+
+sequence_names:
+  - ktima_2022_06_08
+
+source_bags:
+  ktima_2022_06_08: 06_june/rosbag_compressed_2022-06-08-14-03-03.bag
+
+calibration:
+  ktima_2022_06_08:
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: pinhole
+    focal_length: [525.0, 525.0]
+    principal_point: [319.5, 239.5]
+    fps: 10.0
