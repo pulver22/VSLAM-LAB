@@ -139,6 +139,45 @@ def test_bacchus_applies_tf_chain_from_gps_to_camera_frame():
     np.testing.assert_allclose(rows[0][4:8], [0.0, 0.0, 0.0, 1.0])
 
 
+def test_bacchus_deduplicates_repeated_tf_edges():
+    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+        [
+            _transform("gps", "front_camera", (1.0, 2.0, 3.0)),
+            _transform("gps", "front_camera", (1.0, 2.0, 3.0)),
+        ]
+    )
+
+    assert len(tf_edges["gps"]) == 1
+    assert len(tf_edges["front_camera"]) == 1
+
+
+def test_bacchus_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatch):
+    calls = []
+
+    def fake_find(cls, tf_edges, source_frame, target_frame):
+        calls.append((source_frame, target_frame))
+        return np.eye(4)
+
+    monkeypatch.setattr(
+        BACCHUS_dataset,
+        "_find_tf_chain_matrix",
+        classmethod(fake_find),
+    )
+
+    odometry_messages = [
+        (1654690000000000000, _odometry("odom", "gps", (1.0, 0.0, 0.0))),
+        (1654690000100000000, _odometry("odom", "gps", (2.0, 0.0, 0.0))),
+    ]
+    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+        odometry_messages,
+        tf_edges={},
+        target_frame="front_camera",
+    )
+
+    assert len(rows) == 2
+    assert calls == [("gps", "front_camera")]
+
+
 def test_bacchus_missing_tf_chain_names_frames_in_error():
     odom = _odometry("odom", "gps", (10.0, 0.0, 0.0))
     tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
@@ -169,6 +208,20 @@ def test_bacchus_decodes_compressed_image_messages():
 
     assert decoded.shape == image.shape
     assert decoded.dtype == image.dtype
+
+
+def test_bacchus_writes_jpeg_compressed_messages_without_reencoding(tmp_path):
+    jpeg_bytes = b"\xff\xd8fake-jpeg-payload\xff\xd9"
+
+    image_path = BACCHUS_dataset._write_image_message(
+        output_path=tmp_path,
+        timestamp_ns=1654690000000000000,
+        msgtype="sensor_msgs/msg/CompressedImage",
+        msg=SimpleNamespace(format="jpeg", data=jpeg_bytes),
+    )
+
+    assert image_path == tmp_path / "1654690000000000000.jpg"
+    assert image_path.read_bytes() == jpeg_bytes
 
 
 def test_bacchus_create_rgb_csv_uses_current_vslamlab_contract(tmp_path):

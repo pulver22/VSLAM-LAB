@@ -1,0 +1,5 @@
+exp_bacchus_long_dpvo:
+  Config: config_bacchus.yaml
+  NumRuns: 1
+  Parameters: {mode: mono, max_rgb: 7200, verbose: 0}
+  Module: dpvo

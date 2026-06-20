@@ -329,8 +329,12 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             messages = reader.messages(connections=connections)
             for connection, timestamp_ns, rawdata in tqdm(messages, desc=f"Extracting {selected_topic}"):
                 msg = reader.deserialize(rawdata, connection.msgtype)
-                image = BACCHUS_dataset._message_to_bgr_image(connection.msgtype, msg)
-                cv2.imwrite(str(output_path / f"{timestamp_ns}.png"), image)
+                BACCHUS_dataset._write_image_message(
+                    output_path=output_path,
+                    timestamp_ns=timestamp_ns,
+                    msgtype=connection.msgtype,
+                    msg=msg,
+                )
                 written += 1
                 if max_frames > 0 and written >= max_frames:
                     break
@@ -346,10 +350,19 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         target_frame: str,
     ) -> list[list[Any]]:
         rows: list[list[Any]] = []
+        target_frame = cls._clean_frame(target_frame)
+        transform_cache: dict[tuple[str, str], np.ndarray] = {}
         for timestamp_ns, msg in odometry_messages:
             source_frame = cls._odometry_pose_frame(msg)
             pose_matrix = cls._pose_msg_to_matrix(msg.pose.pose)
-            source_to_target = cls._find_tf_chain_matrix(tf_edges, source_frame, target_frame)
+            transform_key = (source_frame, target_frame)
+            if transform_key not in transform_cache:
+                transform_cache[transform_key] = cls._find_tf_chain_matrix(
+                    tf_edges,
+                    source_frame,
+                    target_frame,
+                )
+            source_to_target = transform_cache[transform_key]
             target_pose = pose_matrix @ source_to_target
             translation = target_pose[:3, 3]
             quaternion = cls._quaternion_from_matrix(target_pose[:3, :3])
@@ -368,14 +381,17 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
     @classmethod
     def _tf_edges_from_transforms(cls, transforms: list[Any]) -> dict[str, list[tuple[str, np.ndarray]]]:
-        tf_edges: dict[str, list[tuple[str, np.ndarray]]] = {}
+        deduped_edges: dict[str, dict[str, np.ndarray]] = {}
         for transform_msg in transforms:
             parent_frame = cls._clean_frame(transform_msg.header.frame_id)
             child_frame = cls._clean_frame(transform_msg.child_frame_id)
             matrix = cls._transform_msg_to_matrix(transform_msg.transform)
-            tf_edges.setdefault(parent_frame, []).append((child_frame, matrix))
-            tf_edges.setdefault(child_frame, []).append((parent_frame, np.linalg.inv(matrix)))
-        return tf_edges
+            deduped_edges.setdefault(parent_frame, {}).setdefault(child_frame, matrix)
+            deduped_edges.setdefault(child_frame, {}).setdefault(parent_frame, np.linalg.inv(matrix))
+        return {
+            frame: list(edges.items())
+            for frame, edges in deduped_edges.items()
+        }
 
     @staticmethod
     def _transforms_from_tf_message(msg: Any) -> list[Any]:
@@ -528,6 +544,30 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     @staticmethod
     def _format_csv_number(value: float) -> str:
         return format(float(value), ".12g")
+
+    @staticmethod
+    def _write_image_message(
+        output_path: Path,
+        timestamp_ns: int,
+        msgtype: str,
+        msg: Any,
+    ) -> Path:
+        if msgtype.endswith("/CompressedImage"):
+            payload = bytes(msg.data)
+            format_hint = str(getattr(msg, "format", "") or "").lower()
+            if "jpeg" in format_hint or "jpg" in format_hint or payload.startswith(b"\xff\xd8"):
+                image_path = output_path / f"{timestamp_ns}.jpg"
+                image_path.write_bytes(payload)
+                return image_path
+            if "png" in format_hint or payload.startswith(b"\x89PNG\r\n\x1a\n"):
+                image_path = output_path / f"{timestamp_ns}.png"
+                image_path.write_bytes(payload)
+                return image_path
+
+        image = BACCHUS_dataset._message_to_bgr_image(msgtype, msg)
+        image_path = output_path / f"{timestamp_ns}.png"
+        cv2.imwrite(str(image_path), image)
+        return image_path
 
     @staticmethod
     def _message_to_bgr_image(msgtype: str, msg: Any) -> np.ndarray:
