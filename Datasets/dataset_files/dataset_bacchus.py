@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
-from collections import deque
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,10 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             for name, rel_path in cfg["source_bags"].items()
         }
         self.image_topic = os.environ.get(cfg["image_topic_env"], cfg["image_topic"])
+        self.camera_info_topics = list(cfg.get("camera_info_topics", []))
+        camera_info_override = os.environ.get(cfg.get("camera_info_topic_env", "BACCHUS_CAMERA_INFO_TOPIC"), "")
+        if camera_info_override:
+            self.camera_info_topics = [camera_info_override]
         self.image_transport = cfg.get("image_transport", "raw")
         self.decompressed_image_topic = cfg.get("decompressed_image_topic", self.image_topic)
         self.groundtruth_topic = os.environ.get(
@@ -45,7 +49,14 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         )
         self.camera_frame_candidates = list(cfg.get("camera_frame_candidates", []))
         self.max_frames = int(os.environ.get(cfg["max_frames_env"], cfg.get("max_frames", 0)))
+        self.max_seconds = float(os.environ.get(cfg.get("max_seconds_env", "BACCHUS_MAX_SECONDS"), cfg.get("max_seconds", 0.0)))
+        self.allow_placeholder_calibration = os.environ.get(
+            cfg.get("allow_placeholder_calibration_env", "BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION"),
+            "",
+        ).lower() in {"1", "true", "yes", "on"}
         self.calibration = cfg["calibration"]
+        self._calibration_info_by_sequence: dict[str, Any] = {}
+        self._calibration_info_topic_by_sequence: dict[str, str] = {}
 
     def download_sequence(self, sequence_name: str) -> None:
         if self.check_sequence_availability(sequence_name, verbose=True) == "available":
@@ -67,16 +78,20 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         existing_images = self._rgb_image_paths(rgb_path)
         if self.max_frames > 0 and len(existing_images) >= self.max_frames:
             return
-        if self.max_frames <= 0 and existing_images:
+        if self.max_seconds > 0 and self._rgb_images_cover_seconds(existing_images, self.max_seconds):
+            return
+        if self.max_frames <= 0 and self.max_seconds <= 0 and existing_images:
             return
 
         rgb_path.mkdir(parents=True, exist_ok=True)
-        self._extract_rgb_images(
+        extraction_info = self._extract_rgb_images(
             bag_path=self.get_source_bag_path(sequence_name),
             image_topics=self.get_image_topic_candidates(),
             output_path=rgb_path,
             max_frames=self.max_frames,
+            max_seconds=self.max_seconds,
         )
+        self._update_diagnostics(sequence_name, extraction_info)
 
     def create_rgb_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
@@ -100,7 +115,33 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         tmp.replace(rgb_csv)
 
     def create_calibration_yaml(self, sequence_name: str) -> None:
-        cal = self.calibration[sequence_name]
+        cal = dict(self.calibration[sequence_name])
+        camera_info = self._calibration_info_by_sequence.get(sequence_name)
+        if camera_info is None and self.camera_info_topics:
+            camera_info_result = self._extract_camera_info(
+                bag_path=self.get_source_bag_path(sequence_name),
+                camera_info_topics=self.camera_info_topics,
+                rgb_time_bounds=self._rgb_time_bounds(sequence_name),
+            )
+            if camera_info_result is not None:
+                camera_info_topic, camera_info = camera_info_result
+                self._calibration_info_by_sequence[sequence_name] = camera_info
+                self._calibration_info_topic_by_sequence[sequence_name] = camera_info_topic
+
+        calibration_source = "dataset_yaml"
+        calibration_diagnostics: dict[str, Any] = {}
+        if camera_info is not None:
+            cal.update(self._camera_info_to_calibration(camera_info))
+            calibration_source = "camera_info"
+            calibration_diagnostics = {
+                "camera_info_topic": self._calibration_info_topic_by_sequence.get(sequence_name),
+                "camera_info_frame": self._clean_frame(getattr(getattr(camera_info, "header", None), "frame_id", "")),
+                "camera_info_width": int(getattr(camera_info, "width", 0)),
+                "camera_info_height": int(getattr(camera_info, "height", 0)),
+            }
+        else:
+            self._validate_placeholder_calibration(sequence_name, cal)
+
         rgb0: dict[str, Any] = {
             "cam_name": cal["cam_name"],
             "cam_type": cal["cam_type"],
@@ -110,18 +151,33 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             "fps": float(cal.get("fps", self.rgb_hz)),
             "T_BS": np.eye(4),
         }
+        if "distortion_type" in cal:
+            rgb0["distortion_type"] = cal["distortion_type"]
+        if "distortion_coefficients" in cal:
+            rgb0["distortion_coefficients"] = cal["distortion_coefficients"]
         self.write_calibration_yaml(sequence_name=sequence_name, rgb=[rgb0])
+        self._update_diagnostics(
+            sequence_name,
+            {
+                "calibration_source": calibration_source,
+                "camera_info_topics": self.camera_info_topics,
+                "focal_length": cal["focal_length"],
+                "principal_point": cal["principal_point"],
+                "distortion_coefficients": cal.get("distortion_coefficients", []),
+                **calibration_diagnostics,
+            },
+        )
 
     def create_groundtruth_csv(self, sequence_name: str) -> None:
         groundtruth_csv = self.dataset_path / sequence_name / "groundtruth.csv"
         if groundtruth_csv.is_file():
             return
 
-        rows = self._extract_groundtruth_rows(
+        rows, diagnostics = self._extract_groundtruth_rows(
             bag_path=self.get_source_bag_path(sequence_name),
             rgb_time_bounds=self._rgb_time_bounds(sequence_name),
         )
-        self._write_groundtruth_csv(sequence_name, rows)
+        self._write_groundtruth_csv(sequence_name, rows, diagnostics=diagnostics)
 
     def check_sequence_integrity(self, sequence_name: str, verbose: bool) -> bool:
         complete_sequence = super().check_sequence_integrity(sequence_name, verbose)
@@ -171,6 +227,14 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             return None
         return min(timestamps), max(timestamps)
 
+    @staticmethod
+    def _rgb_images_cover_seconds(image_paths: list[Path], max_seconds: float) -> bool:
+        if len(image_paths) < 2:
+            return False
+        timestamps = [BACCHUS_dataset._timestamp_from_image_name(path) for path in image_paths]
+        duration_s = (max(timestamps) - min(timestamps)) / 1e9
+        return duration_s >= max_seconds
+
     def _resolve_groundtruth_target_frame(self, tf_edges: dict[str, list[tuple[str, np.ndarray]]]) -> str:
         if self.camera_frame:
             return self._clean_frame(self.camera_frame)
@@ -198,7 +262,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         self,
         bag_path: Path,
         rgb_time_bounds: tuple[int, int] | None = None,
-    ) -> list[list[Any]]:
+    ) -> tuple[list[list[Any]], dict[str, Any]]:
         try:
             from rosbags.highlevel import AnyReader
         except ImportError as exc:
@@ -208,6 +272,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         odometry_messages: list[tuple[int, Any]] = []
         tf_transforms: list[Any] = []
+        tf_timestamps: list[int] = []
         min_rgb_ts = rgb_time_bounds[0] if rgb_time_bounds else None
         max_rgb_ts = rgb_time_bounds[1] if rgb_time_bounds else None
         margin_ns = int(2e9)
@@ -233,7 +298,9 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             ):
                 msg = reader.deserialize(rawdata, connection.msgtype)
                 if connection.topic in self.tf_topics:
-                    tf_transforms.extend(self._transforms_from_tf_message(msg))
+                    transforms = self._transforms_from_tf_message(msg)
+                    tf_transforms.extend(transforms)
+                    tf_timestamps.extend([timestamp_ns] * len(transforms))
                     continue
 
                 if min_rgb_ts is not None and timestamp_ns < min_rgb_ts - margin_ns:
@@ -256,15 +323,31 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 f"{self.groundtruth_topic}"
             )
 
-        tf_edges = self._tf_edges_from_transforms(tf_transforms)
+        tf_edges = self._tf_edges_from_transforms(tf_transforms, timestamps_ns=tf_timestamps)
         target_frame = self._resolve_groundtruth_target_frame(tf_edges)
-        return self._groundtruth_rows_from_odometry_messages(
+        diagnostics: dict[str, Any] = {}
+        rows = self._groundtruth_rows_from_odometry_messages(
             odometry_messages,
             tf_edges=tf_edges,
             target_frame=target_frame,
+            diagnostics=diagnostics,
         )
+        diagnostics.update(
+            {
+                "groundtruth_topic": self.groundtruth_topic,
+                "tf_topics": self.tf_topics,
+                "groundtruth_target_frame": target_frame,
+                "rgb_time_bounds_ns": list(rgb_time_bounds) if rgb_time_bounds else None,
+            }
+        )
+        return rows, diagnostics
 
-    def _write_groundtruth_csv(self, sequence_name: str, rows: list[list[Any]]) -> None:
+    def _write_groundtruth_csv(
+        self,
+        sequence_name: str,
+        rows: list[list[Any]],
+        diagnostics: dict[str, Any] | None = None,
+    ) -> None:
         sequence_path = self.dataset_path / sequence_name
         sequence_path.mkdir(parents=True, exist_ok=True)
         groundtruth_csv = sequence_path / "groundtruth.csv"
@@ -277,6 +360,163 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 writer.writerow([row[0], *[self._format_csv_number(v) for v in row[1:]]])
 
         tmp.replace(groundtruth_csv)
+        if diagnostics is not None:
+            diagnostics = dict(diagnostics)
+            diagnostics.update(self._groundtruth_row_diagnostics(rows, diagnostics))
+            self._update_diagnostics(sequence_name, diagnostics)
+
+    def _extract_camera_info(
+        self,
+        bag_path: Path,
+        camera_info_topics: list[str],
+        rgb_time_bounds: tuple[int, int] | None = None,
+    ) -> tuple[str, Any] | None:
+        try:
+            from rosbags.highlevel import AnyReader
+        except ImportError as exc:
+            raise RuntimeError(
+                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
+            ) from exc
+
+        min_rgb_ts = rgb_time_bounds[0] if rgb_time_bounds else None
+        max_rgb_ts = rgb_time_bounds[1] if rgb_time_bounds else None
+        margin_ns = int(2e9)
+        with AnyReader([bag_path]) as reader:
+            for camera_info_topic in camera_info_topics:
+                connections = [c for c in reader.connections if c.topic == camera_info_topic]
+                if not connections:
+                    continue
+                for connection, timestamp_ns, rawdata in reader.messages(connections=connections):
+                    if min_rgb_ts is not None and timestamp_ns < min_rgb_ts - margin_ns:
+                        continue
+                    if max_rgb_ts is not None and timestamp_ns > max_rgb_ts + margin_ns:
+                        break
+                    return camera_info_topic, reader.deserialize(rawdata, connection.msgtype)
+        return None
+
+    @staticmethod
+    def _camera_info_to_calibration(camera_info: Any) -> dict[str, Any]:
+        distortion_values = getattr(camera_info, "d", getattr(camera_info, "D", []))
+        distortion_coefficients = [float(v) for v in list(distortion_values)]
+        distortion_model = str(getattr(camera_info, "distortion_model", "") or "").lower()
+        if distortion_model in {"plumb_bob", "radtan"}:
+            distortion_type = "radtan"
+            if len(distortion_coefficients) >= 5:
+                cam_model = "radtan5"
+            elif len(distortion_coefficients) >= 4:
+                cam_model = "radtan4"
+            else:
+                cam_model = "pinhole"
+        else:
+            distortion_type = distortion_model or "unknown"
+            cam_model = "pinhole"
+
+        k = list(getattr(camera_info, "k", getattr(camera_info, "K", [])))
+        if len(k) != 9:
+            raise ValueError("BACCHUS CameraInfo must contain a 3x3 K matrix")
+        calibration = {
+            "cam_model": cam_model,
+            "focal_length": [float(k[0]), float(k[4])],
+            "principal_point": [float(k[2]), float(k[5])],
+        }
+        if distortion_coefficients:
+            calibration["distortion_type"] = distortion_type
+            calibration["distortion_coefficients"] = distortion_coefficients
+        return calibration
+
+    def _validate_placeholder_calibration(self, sequence_name: str, calibration: dict[str, Any]) -> None:
+        if self.allow_placeholder_calibration:
+            return
+        sequence_path = self.dataset_path / sequence_name
+        image_dimension = self._first_rgb_image_dimension(sequence_path / calibration["cam_name"])
+        if image_dimension is None:
+            return
+        width, height = image_dimension
+        focal = [float(v) for v in calibration.get("focal_length", [])]
+        principal = [float(v) for v in calibration.get("principal_point", [])]
+        looks_placeholder = focal == [525.0, 525.0] and principal == [319.5, 239.5]
+        looks_hd = width >= 1280 or height >= 720
+        if looks_placeholder and looks_hd:
+            raise ValueError(
+                "BACCHUS placeholder calibration cannot be used for "
+                f"{width}x{height} images. Extract CameraInfo or set "
+                "BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION=1 to acknowledge the limitation."
+            )
+
+    @staticmethod
+    def _first_rgb_image_dimension(rgb_path: Path) -> tuple[int, int] | None:
+        image_paths = BACCHUS_dataset._rgb_image_paths(rgb_path)
+        if not image_paths:
+            return None
+        image = cv2.imread(str(image_paths[0]))
+        if image is None:
+            return None
+        height, width = image.shape[:2]
+        return width, height
+
+    def _diagnostics_path(self, sequence_name: str) -> Path:
+        return self.dataset_path / sequence_name / "bacchus_diagnostics.yaml"
+
+    def _update_diagnostics(self, sequence_name: str, values: dict[str, Any]) -> None:
+        diagnostics_path = self._diagnostics_path(sequence_name)
+        diagnostics = self._read_diagnostics(diagnostics_path)
+        diagnostics.update(self._yaml_safe(values))
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = diagnostics_path.with_suffix(".yaml.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            yaml.safe_dump(diagnostics, f, sort_keys=True)
+        tmp.replace(diagnostics_path)
+
+    @staticmethod
+    def _read_diagnostics(diagnostics_path: Path) -> dict[str, Any]:
+        if not diagnostics_path.is_file():
+            return {}
+        with open(diagnostics_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    @classmethod
+    def _groundtruth_row_diagnostics(
+        cls,
+        rows: list[list[Any]],
+        diagnostics: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not rows:
+            return {
+                "groundtruth_count": 0,
+                "groundtruth_path_length_m": 0.0,
+                "groundtruth_time_bounds_ns": None,
+                "rgb_groundtruth_overlap_ns": None,
+            }
+        positions = np.array([[row[1], row[2], row[3]] for row in rows], dtype=float)
+        path_length = float(np.linalg.norm(np.diff(positions, axis=0), axis=1).sum()) if len(rows) > 1 else 0.0
+        gt_bounds = [int(rows[0][0]), int(rows[-1][0])]
+        rgb_bounds = diagnostics.get("rgb_time_bounds_ns")
+        overlap = None
+        if rgb_bounds and rgb_bounds[0] is not None and rgb_bounds[1] is not None:
+            overlap_start = max(int(rgb_bounds[0]), gt_bounds[0])
+            overlap_end = min(int(rgb_bounds[1]), gt_bounds[1])
+            if overlap_start <= overlap_end:
+                overlap = [overlap_start, overlap_end]
+        return {
+            "groundtruth_count": len(rows),
+            "groundtruth_path_length_m": path_length,
+            "groundtruth_time_bounds_ns": gt_bounds,
+            "rgb_groundtruth_overlap_ns": overlap,
+        }
+
+    @classmethod
+    def _yaml_safe(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(k): cls._yaml_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [cls._yaml_safe(v) for v in value]
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, Path):
+            return str(value)
+        return value
 
     @staticmethod
     def _rgb_image_paths(rgb_path: Path) -> list[Path]:
@@ -296,13 +536,60 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 f"BACCHUS RGB image filenames must be nanosecond timestamps: {image_path.name}"
             ) from exc
 
-    @staticmethod
+    @classmethod
     def _extract_rgb_images(
+        cls,
         bag_path: Path,
         image_topics: list[str],
         output_path: Path,
         max_frames: int = 0,
-    ) -> None:
+        max_seconds: float = 0.0,
+    ) -> dict[str, Any]:
+        written = 0
+        first_timestamp_ns: int | None = None
+        last_timestamp_ns: int | None = None
+        selected_topic: str | None = None
+        for selected_topic, msgtype, timestamp_ns, msg in cls._iter_image_messages(
+            bag_path,
+            image_topics,
+        ):
+            if first_timestamp_ns is None:
+                first_timestamp_ns = timestamp_ns
+            if max_seconds > 0 and (timestamp_ns - first_timestamp_ns) / 1e9 >= max_seconds:
+                break
+            cls._write_image_message(
+                output_path=output_path,
+                timestamp_ns=timestamp_ns,
+                msgtype=msgtype,
+                msg=msg,
+            )
+            written += 1
+            last_timestamp_ns = timestamp_ns
+            if max_frames > 0 and written >= max_frames:
+                break
+
+        if written == 0:
+            raise RuntimeError(f"No images extracted from {bag_path}:{image_topics}")
+
+        duration_s = 0.0
+        if first_timestamp_ns is not None and last_timestamp_ns is not None:
+            duration_s = (last_timestamp_ns - first_timestamp_ns) / 1e9
+        fps = written / duration_s if duration_s > 0 else 0.0
+        return {
+            "image_topic": selected_topic,
+            "image_count": written,
+            "rgb_time_bounds_ns": [first_timestamp_ns, last_timestamp_ns],
+            "rgb_duration_s": duration_s,
+            "rgb_inferred_fps": fps,
+            "max_frames": max_frames,
+            "max_seconds": max_seconds,
+        }
+
+    @staticmethod
+    def _iter_image_messages(
+        bag_path: Path,
+        image_topics: list[str],
+    ):
         try:
             from rosbags.highlevel import AnyReader
         except ImportError as exc:
@@ -310,7 +597,6 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
             ) from exc
 
-        written = 0
         with AnyReader([bag_path]) as reader:
             connections = []
             selected_topic = None
@@ -329,18 +615,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             messages = reader.messages(connections=connections)
             for connection, timestamp_ns, rawdata in tqdm(messages, desc=f"Extracting {selected_topic}"):
                 msg = reader.deserialize(rawdata, connection.msgtype)
-                BACCHUS_dataset._write_image_message(
-                    output_path=output_path,
-                    timestamp_ns=timestamp_ns,
-                    msgtype=connection.msgtype,
-                    msg=msg,
-                )
-                written += 1
-                if max_frames > 0 and written >= max_frames:
-                    break
-
-        if written == 0:
-            raise RuntimeError(f"No images extracted from {bag_path}:{image_topic}")
+                yield selected_topic, connection.msgtype, timestamp_ns, msg
 
     @classmethod
     def _groundtruth_rows_from_odometry_messages(
@@ -348,21 +623,59 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         odometry_messages: list[tuple[int, Any]],
         tf_edges: dict[str, list[tuple[str, np.ndarray]]],
         target_frame: str,
+        diagnostics: dict[str, Any] | None = None,
     ) -> list[list[Any]]:
         rows: list[list[Any]] = []
         target_frame = cls._clean_frame(target_frame)
         transform_cache: dict[tuple[str, str], np.ndarray] = {}
+        chain_cache: dict[tuple[str, str], tuple[np.ndarray, list[str], bool]] = {}
+        dynamic_tf = cls._tf_edges_are_dynamic(tf_edges)
         for timestamp_ns, msg in odometry_messages:
             source_frame = cls._odometry_pose_frame(msg)
             pose_matrix = cls._pose_msg_to_matrix(msg.pose.pose)
             transform_key = (source_frame, target_frame)
-            if transform_key not in transform_cache:
-                transform_cache[transform_key] = cls._find_tf_chain_matrix(
-                    tf_edges,
-                    source_frame,
-                    target_frame,
+            if dynamic_tf:
+                if transform_key in transform_cache:
+                    source_to_target, tf_chain, tf_chain_dynamic = chain_cache[transform_key]
+                else:
+                    source_to_target, tf_chain, tf_chain_dynamic = cls._find_tf_chain(
+                        tf_edges,
+                        source_frame,
+                        target_frame,
+                        timestamp_ns=timestamp_ns,
+                    )
+                    if not tf_chain_dynamic:
+                        chain_cache[transform_key] = (source_to_target, tf_chain, tf_chain_dynamic)
+                        transform_cache[transform_key] = source_to_target
+            else:
+                if transform_key not in transform_cache:
+                    if diagnostics is None:
+                        source_to_target = cls._find_tf_chain_matrix(
+                            tf_edges,
+                            source_frame,
+                            target_frame,
+                        )
+                        chain_cache[transform_key] = (source_to_target, [source_frame, target_frame], False)
+                    else:
+                        chain_cache[transform_key] = cls._find_tf_chain(
+                            tf_edges,
+                            source_frame,
+                            target_frame,
+                            timestamp_ns=timestamp_ns,
+                        )
+                        source_to_target = chain_cache[transform_key][0]
+                    transform_cache[transform_key] = source_to_target
+                source_to_target, tf_chain, tf_chain_dynamic = chain_cache[transform_key]
+
+            if diagnostics is not None and "groundtruth_source_frame" not in diagnostics:
+                diagnostics.update(
+                    {
+                        "groundtruth_source_frame": source_frame,
+                        "groundtruth_target_frame": target_frame,
+                        "tf_chain": tf_chain,
+                        "tf_chain_dynamic": tf_chain_dynamic,
+                    }
                 )
-            source_to_target = transform_cache[transform_key]
             target_pose = pose_matrix @ source_to_target
             translation = target_pose[:3, 3]
             quaternion = cls._quaternion_from_matrix(target_pose[:3, :3])
@@ -380,17 +693,30 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         return rows
 
     @classmethod
-    def _tf_edges_from_transforms(cls, transforms: list[Any]) -> dict[str, list[tuple[str, np.ndarray]]]:
-        deduped_edges: dict[str, dict[str, np.ndarray]] = {}
-        for transform_msg in transforms:
+    def _tf_edges_from_transforms(
+        cls,
+        transforms: list[Any],
+        timestamps_ns: list[int] | None = None,
+    ) -> dict[str, list[tuple]]:
+        if timestamps_ns is None:
+            timestamps_ns = [None] * len(transforms)
+        deduped_edges: dict[str, dict[tuple[str, int | None], tuple]] = {}
+        seen_static_pairs: set[tuple[str, str]] = set()
+        for transform_msg, timestamp_ns in zip(transforms, timestamps_ns):
             parent_frame = cls._clean_frame(transform_msg.header.frame_id)
             child_frame = cls._clean_frame(transform_msg.child_frame_id)
             matrix = cls._transform_msg_to_matrix(transform_msg.transform)
-            deduped_edges.setdefault(parent_frame, {}).setdefault(child_frame, matrix)
-            deduped_edges.setdefault(child_frame, {}).setdefault(parent_frame, np.linalg.inv(matrix))
+            if timestamp_ns is None:
+                pair = (parent_frame, child_frame)
+                if pair in seen_static_pairs:
+                    continue
+                seen_static_pairs.add(pair)
+                seen_static_pairs.add((child_frame, parent_frame))
+            deduped_edges.setdefault(parent_frame, {})[(child_frame, timestamp_ns)] = (child_frame, matrix, timestamp_ns)
+            deduped_edges.setdefault(child_frame, {})[(parent_frame, timestamp_ns)] = (parent_frame, np.linalg.inv(matrix), timestamp_ns)
         return {
-            frame: list(edges.items())
-            for frame, edges in deduped_edges.items()
+            frame: list(edge_map.values())
+            for frame, edge_map in deduped_edges.items()
         }
 
     @staticmethod
@@ -406,29 +732,89 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         source_frame: str,
         target_frame: str,
     ) -> np.ndarray:
+        matrix, _, _ = cls._find_tf_chain(tf_edges, source_frame, target_frame)
+        return matrix
+
+    @classmethod
+    def _find_tf_chain(
+        cls,
+        tf_edges: dict[str, list[tuple]],
+        source_frame: str,
+        target_frame: str,
+        timestamp_ns: int | None = None,
+    ) -> tuple[np.ndarray, list[str], bool]:
         source_frame = cls._clean_frame(source_frame)
         target_frame = cls._clean_frame(target_frame)
         if source_frame == target_frame:
-            return np.eye(4)
+            return np.eye(4), [source_frame], False
 
-        queue = deque([(source_frame, np.eye(4))])
+        queue = deque([(source_frame, np.eye(4), [source_frame], False)])
         visited = {source_frame}
         while queue:
-            frame, matrix = queue.popleft()
-            for next_frame, edge_matrix in tf_edges.get(frame, []):
+            frame, matrix, chain, chain_dynamic = queue.popleft()
+            for next_frame, edge_matrix, edge_dynamic in cls._selected_tf_edges(
+                tf_edges.get(frame, []),
+                timestamp_ns,
+            ):
                 if next_frame in visited:
                     continue
                 next_matrix = matrix @ edge_matrix
+                next_chain = [*chain, next_frame]
+                next_dynamic = chain_dynamic or edge_dynamic
                 if next_frame == target_frame:
-                    return next_matrix
+                    return next_matrix, next_chain, next_dynamic
                 visited.add(next_frame)
-                queue.append((next_frame, next_matrix))
+                queue.append((next_frame, next_matrix, next_chain, next_dynamic))
 
         available_frames = ", ".join(sorted(cls._available_tf_frames(tf_edges))) or "<none>"
         raise ValueError(
             f"No TF chain from '{source_frame}' to '{target_frame}'. "
             f"available frames: {available_frames}"
         )
+
+    @classmethod
+    def _selected_tf_edges(
+        cls,
+        edges: list[tuple],
+        timestamp_ns: int | None,
+    ) -> list[tuple[str, np.ndarray, bool]]:
+        grouped: dict[str, list[tuple[np.ndarray, int | None]]] = defaultdict(list)
+        for edge in edges:
+            next_frame = cls._edge_frame(edge)
+            grouped[next_frame].append((cls._edge_matrix(edge), cls._edge_timestamp(edge)))
+
+        selected = []
+        for next_frame, candidates in grouped.items():
+            dynamic = any(ts is not None for _, ts in candidates) and len(candidates) > 1
+            if timestamp_ns is None:
+                matrix, _ = candidates[0]
+            else:
+                matrix, _ = min(
+                    candidates,
+                    key=lambda item: abs((item[1] if item[1] is not None else timestamp_ns) - timestamp_ns),
+                )
+            selected.append((next_frame, matrix, dynamic))
+        return selected
+
+    @staticmethod
+    def _edge_frame(edge: tuple) -> str:
+        return edge[0]
+
+    @staticmethod
+    def _edge_matrix(edge: tuple) -> np.ndarray:
+        return edge[1]
+
+    @staticmethod
+    def _edge_timestamp(edge: tuple) -> int | None:
+        return edge[2] if len(edge) > 2 else None
+
+    @classmethod
+    def _tf_edges_are_dynamic(cls, tf_edges: dict[str, list[tuple]]) -> bool:
+        by_pair: dict[tuple[str, str], set[int | None]] = defaultdict(set)
+        for frame, edges in tf_edges.items():
+            for edge in edges:
+                by_pair[(frame, cls._edge_frame(edge))].add(cls._edge_timestamp(edge))
+        return any(len(timestamps) > 1 for timestamps in by_pair.values())
 
     @classmethod
     def _odometry_pose_frame(cls, msg: Any) -> str:
@@ -524,7 +910,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     def _available_tf_frames(tf_edges: dict[str, list[tuple[str, np.ndarray]]]) -> set[str]:
         frames = set(tf_edges.keys())
         for edges in tf_edges.values():
-            frames.update(frame for frame, _ in edges)
+            frames.update(BACCHUS_dataset._edge_frame(edge) for edge in edges)
         return frames
 
     @staticmethod

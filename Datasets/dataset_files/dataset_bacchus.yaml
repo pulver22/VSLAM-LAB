@@ -8,6 +8,11 @@ source_root_env: BACCHUS_KTIMA_ROOT
 source_root_default: /media/pulver/PulverHDD/BACCHUS/ktima
 image_topic_env: BACCHUS_IMAGE_TOPIC
 image_topic: /front/zed_node/rgb/image_rect_color
+camera_info_topic_env: BACCHUS_CAMERA_INFO_TOPIC
+camera_info_topics:
+  - /front/zed_node/rgb/camera_info
+  - /front/zed_node/left/camera_info
+  - /front/zed_node/rgb/image_rect_color/camera_info
 image_transport: compressed
 decompressed_image_topic: /front/zed_node/rgb_decompressed
 groundtruth_topic_env: BACCHUS_GROUNDTRUTH_TOPIC
@@ -17,6 +22,7 @@ tf_topics: [/tf_static, /tf]
 camera_frame_env: BACCHUS_CAMERA_FRAME
 camera_frame: ""
 camera_frame_candidates:
+  - front_left_camera_optical_frame
   - front_camera
   - front_camera_optical
   - zed_camera_center
@@ -24,6 +30,9 @@ camera_frame_candidates:
   - zed_left_camera_optical_frame
 max_frames_env: BACCHUS_MAX_FRAMES
 max_frames: 200
+max_seconds_env: BACCHUS_MAX_SECONDS
+max_seconds: 0
+allow_placeholder_calibration_env: BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION
 
 sequence_names:
   - ktima_2022_06_08
