@@ -1,0 +1,70 @@
+metadata:
+  source: BLT ktima CameraInfo profiles extracted from the selected 2022 monthly rosbags.
+  note: May keeps the nearest matching April profile until its bag reaches the same verified extraction state.
+calibration:
+  ktima_2022_03:
+    source: 2022-03 CameraInfo /front/zed_node/rgb/camera_info
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1057.0008544921875, 1057.0008544921875]
+    principal_point: [952.2301635742188, 553.5770263671875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_04:
+    source: 2022-04 CameraInfo /front/zed_node/rgb/camera_info
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1051.994384765625, 1051.994384765625]
+    principal_point: [952.2286987304688, 553.5765380859375]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_05:
+    source: inferred from 2022-04 CameraInfo pending May TF/extraction verification
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1051.994384765625, 1051.994384765625]
+    principal_point: [952.2286987304688, 553.5765380859375]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_06:
+    source: 2022-06 CameraInfo /front/zed_node/rgb/camera_info
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1057.0008544921875, 1057.0008544921875]
+    principal_point: [952.2301635742188, 553.5770263671875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_07:
+    source: 2022-07 CameraInfo /front/zed_node/rgb/camera_info
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1051.08349609375, 1051.08349609375]
+    principal_point: [952.2286987304688, 553.5767822265625]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_09:
+    source: 2022-09 CameraInfo /front/zed_node/rgb/camera_info
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1057.0008544921875, 1057.0008544921875]
+    principal_point: [952.2301635742188, 553.5770263671875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0

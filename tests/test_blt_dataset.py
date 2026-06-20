@@ -1,4 +1,5 @@
 import csv
+import os
 import yaml
 from pathlib import Path
 from types import SimpleNamespace
@@ -6,13 +7,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from Datasets.dataset_files.dataset_bacchus import BACCHUS_dataset
+from Datasets.dataset_files.dataset_blt import BLT_dataset
 from Datasets.get_dataset import get_dataset, list_available_datasets
 from Evaluate.evaluate_functions import _count_csv_data_rows, _count_text_data_rows
 from Evaluate.plot_functions import _trajectory_grid_shape
 
 
-BACCHUS_SEQUENCES = {
+BLT_SEQUENCES = {
     "ktima_2022_03": "03_march/rosbag_certh_compressed_2022-03-23-12-27-15.bag",
     "ktima_2022_04": "04_april/rosbag_compressed_2022-04-06-11-02-34.bag",
     "ktima_2022_05": "05_may/rosbag_compressed_2022-05-06.bag",
@@ -20,10 +21,14 @@ BACCHUS_SEQUENCES = {
     "ktima_2022_07": "07_july/rosbag_compressed_2022-07-13-15-38-32.bag",
     "ktima_2022_09": "09_september/rosbag_compressed_2022-09-15-14-23-20.bag",
 }
-BACCHUS_SEQUENCE = "ktima_2022_04"
-BACCHUS_BAG = "04_april/rosbag_compressed_2022-04-06-11-02-34.bag"
-BACCHUS_KTIMA_ROOT = Path("/media/pulver/PulverHDD/BACCHUS/ktima")
-BACCHUS_METADATA_BAG = BACCHUS_KTIMA_ROOT / BACCHUS_SEQUENCES["ktima_2022_03"]
+BLT_SEQUENCE = "ktima_2022_04"
+BLT_BAG = "04_april/rosbag_compressed_2022-04-06-11-02-34.bag"
+BLT_LOCAL_ROOT = os.environ.get("BLT_KTIMA_ROOT")
+BLT_METADATA_BAG = (
+    Path(BLT_LOCAL_ROOT) / BLT_SEQUENCES["ktima_2022_03"]
+    if BLT_LOCAL_ROOT
+    else None
+)
 
 
 def _vector(x=0.0, y=0.0, z=0.0):
@@ -82,32 +87,41 @@ def _camera_info(
     )
 
 
-def test_bacchus_dataset_is_registered(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_dataset_is_registered(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
 
-    assert "bacchus" in list_available_datasets()
-    assert dataset.dataset_name == "bacchus"
-    assert dataset.dataset_folder == "BACCHUS"
-    assert dataset.sequence_names == list(BACCHUS_SEQUENCES)
-    assert dataset.sequence_nicknames == [name.replace("_", " ") for name in BACCHUS_SEQUENCES]
+    assert "blt" in list_available_datasets()
+    assert "blt_calibration" not in list_available_datasets()
+    assert dataset.dataset_name == "blt"
+    assert dataset.dataset_folder == "BLT_dataset"
+    assert dataset.sequence_names == list(BLT_SEQUENCES)
+    assert dataset.sequence_nicknames == [name.replace("_", " ") for name in BLT_SEQUENCES]
     assert dataset.modes == ["mono"]
     assert dataset.cam_models == ["pinhole"]
-    assert dataset.source_bags == BACCHUS_SEQUENCES
+    assert dataset.source_bags == BLT_SEQUENCES
 
 
-@pytest.mark.parametrize("sequence_name", BACCHUS_SEQUENCES)
-def test_bacchus_resolves_full_monthly_local_bag_paths(tmp_path, monkeypatch, sequence_name):
+def test_blt_has_no_default_local_source_root(tmp_path, monkeypatch):
+    monkeypatch.delenv("BLT_KTIMA_ROOT", raising=False)
+    dataset = get_dataset("blt", tmp_path)
+
+    with pytest.raises(RuntimeError, match="BLT_KTIMA_ROOT.*ktima_2022_04"):
+        dataset.get_source_bag_path(BLT_SEQUENCE)
+
+
+@pytest.mark.parametrize("sequence_name", BLT_SEQUENCES)
+def test_blt_resolves_full_monthly_local_bag_paths(tmp_path, monkeypatch, sequence_name):
     root = tmp_path / "ktima"
-    monkeypatch.setenv("BACCHUS_KTIMA_ROOT", str(root))
-    dataset = get_dataset("bacchus", tmp_path)
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    dataset = get_dataset("blt", tmp_path)
 
     assert dataset.get_source_bag_path(sequence_name) == (
-        root / BACCHUS_SEQUENCES[sequence_name]
+        root / BLT_SEQUENCES[sequence_name]
     )
 
 
-def test_bacchus_default_matrix_excludes_trimmed_and_2023_bags(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_default_matrix_excludes_trimmed_and_2023_bags(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
 
     source_paths = list(dataset.source_bags.values())
 
@@ -117,30 +131,30 @@ def test_bacchus_default_matrix_excludes_trimmed_and_2023_bags(tmp_path):
     assert "07_july/rosbag_compressed_2022-07-13-15-38-32.bag" in source_paths
 
 
-def test_bacchus_accepts_existing_local_source_bag(tmp_path, monkeypatch):
+def test_blt_accepts_existing_local_source_bag(tmp_path, monkeypatch):
     root = tmp_path / "ktima"
-    bag_path = root / BACCHUS_BAG
+    bag_path = root / BLT_BAG
     bag_path.parent.mkdir(parents=True)
     bag_path.write_bytes(b"bag")
-    monkeypatch.setenv("BACCHUS_KTIMA_ROOT", str(root))
-    dataset = get_dataset("bacchus", tmp_path)
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    dataset = get_dataset("blt", tmp_path)
 
-    dataset.download_sequence_data(BACCHUS_SEQUENCE)
+    dataset.download_sequence_data(BLT_SEQUENCE)
 
-    assert (tmp_path / "BACCHUS" / BACCHUS_SEQUENCE).is_dir()
+    assert (tmp_path / "BLT_dataset" / BLT_SEQUENCE).is_dir()
 
 
-def test_bacchus_reports_missing_local_source_bag(tmp_path, monkeypatch):
+def test_blt_reports_missing_local_source_bag(tmp_path, monkeypatch):
     root = tmp_path / "ktima"
-    monkeypatch.setenv("BACCHUS_KTIMA_ROOT", str(root))
-    dataset = get_dataset("bacchus", tmp_path)
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    dataset = get_dataset("blt", tmp_path)
 
     with pytest.raises(FileNotFoundError, match="ktima_2022_04.*04_april"):
-        dataset.download_sequence_data(BACCHUS_SEQUENCE)
+        dataset.download_sequence_data(BLT_SEQUENCE)
 
 
-def test_bacchus_uses_ros_compressed_transport_launch_defaults(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_uses_ros_compressed_transport_launch_defaults(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
 
     assert dataset.image_topic == "/front/zed_node/rgb/image_rect_color/compressed"
     assert dataset.camera_info_topics == [
@@ -168,13 +182,13 @@ def test_bacchus_uses_ros_compressed_transport_launch_defaults(tmp_path):
     assert dataset.max_seconds == 0.0
 
 
-def test_bacchus_local_metadata_bag_matches_configured_topic_contract(tmp_path):
+def test_blt_local_metadata_bag_matches_configured_topic_contract(tmp_path):
     pytest.importorskip("rosbags")
 
-    if not BACCHUS_METADATA_BAG.is_file():
-        pytest.skip(f"Local BACCHUS metadata bag is not available: {BACCHUS_METADATA_BAG}")
+    if BLT_METADATA_BAG is None or not BLT_METADATA_BAG.is_file():
+        pytest.skip(f"Local BLT metadata bag is not available: {BLT_METADATA_BAG}")
 
-    dataset = get_dataset("bacchus", tmp_path)
+    dataset = get_dataset("blt", tmp_path)
     expected_topics = {
         dataset.image_topic: "sensor_msgs/msg/CompressedImage",
         dataset.camera_info_topics[0]: "sensor_msgs/msg/CameraInfo",
@@ -184,7 +198,7 @@ def test_bacchus_local_metadata_bag_matches_configured_topic_contract(tmp_path):
     }
     samples = {}
 
-    with BACCHUS_dataset._open_fast_ros1_stream(BACCHUS_METADATA_BAG) as reader:
+    with BLT_dataset._open_fast_ros1_stream(BLT_METADATA_BAG) as reader:
         actual_topics = {connection.topic: connection.msgtype for connection in reader.connections}
         for topic, msgtype in expected_topics.items():
             assert actual_topics[topic] == msgtype
@@ -217,14 +231,14 @@ def test_bacchus_local_metadata_bag_matches_configured_topic_contract(tmp_path):
     assert samples["/odometry/gps"].child_frame_id == "base_link"
 
 
-def test_bacchus_selects_preferred_image_topic_from_available_topics():
+def test_blt_selects_preferred_image_topic_from_available_topics():
     topics = [
         "/front/zed_node/rgb/image_rect_color",
         "/front/zed_node/rgb/image_rect_color/compressed",
         "/rear/image/compressed",
     ]
 
-    selected = BACCHUS_dataset._select_first_available_topic(
+    selected = BLT_dataset._select_first_available_topic(
         ["/front/zed_node/rgb/image_rect_color/compressed", "/front/zed_node/rgb/image_rect_color"],
         topics,
         label="image",
@@ -234,9 +248,9 @@ def test_bacchus_selects_preferred_image_topic_from_available_topics():
     assert selected == "/front/zed_node/rgb/image_rect_color/compressed"
 
 
-def test_bacchus_missing_preferred_image_topic_names_available_topics():
+def test_blt_missing_preferred_image_topic_names_available_topics():
     with pytest.raises(ValueError, match="Image topics.*bag.bag.*Available topics.*/rear/image"):
-        BACCHUS_dataset._select_first_available_topic(
+        BLT_dataset._select_first_available_topic(
             ["/front/zed_node/rgb/image_rect_color/compressed"],
             ["/rear/image/compressed"],
             label="Image",
@@ -244,7 +258,7 @@ def test_bacchus_missing_preferred_image_topic_names_available_topics():
         )
 
 
-def test_bacchus_iter_image_messages_uses_fast_ros1_stream(monkeypatch, tmp_path):
+def test_blt_iter_image_messages_uses_fast_ros1_stream(monkeypatch, tmp_path):
     calls = []
 
     class FakeStream:
@@ -270,10 +284,10 @@ def test_bacchus_iter_image_messages_uses_fast_ros1_stream(monkeypatch, tmp_path
         def deserialize(self, rawdata, msgtype):
             return SimpleNamespace(format="jpeg", data=rawdata, msgtype=msgtype)
 
-    monkeypatch.setattr(BACCHUS_dataset, "_open_fast_ros1_stream", lambda _path: FakeStream())
+    monkeypatch.setattr(BLT_dataset, "_open_fast_ros1_stream", lambda _path: FakeStream())
 
     rows = list(
-        BACCHUS_dataset._iter_image_messages(
+        BLT_dataset._iter_image_messages(
             tmp_path / "bag.bag",
             ["/front/zed_node/rgb/image_rect_color/compressed"],
         )
@@ -286,36 +300,36 @@ def test_bacchus_iter_image_messages_uses_fast_ros1_stream(monkeypatch, tmp_path
     assert rows[0][3].data == b"raw"
 
 
-def test_bacchus_groundtruth_and_camera_frame_env_overrides(tmp_path, monkeypatch):
-    monkeypatch.setenv("BACCHUS_GROUNDTRUTH_TOPIC", "/custom/rtk")
-    monkeypatch.setenv("BACCHUS_CAMERA_FRAME", "front_camera_optical")
+def test_blt_groundtruth_and_camera_frame_env_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLT_GROUNDTRUTH_TOPIC", "/custom/rtk")
+    monkeypatch.setenv("BLT_CAMERA_FRAME", "front_camera_optical")
 
-    dataset = get_dataset("bacchus", tmp_path)
+    dataset = get_dataset("blt", tmp_path)
 
     assert dataset.groundtruth_topic == "/custom/rtk"
     assert dataset.camera_frame == "front_camera_optical"
 
 
-def test_bacchus_max_seconds_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("BACCHUS_MAX_SECONDS", "360")
+def test_blt_max_seconds_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLT_MAX_SECONDS", "360")
 
-    dataset = get_dataset("bacchus", tmp_path)
+    dataset = get_dataset("blt", tmp_path)
 
     assert dataset.max_seconds == 360.0
 
 
-def test_bacchus_writes_groundtruth_csv_from_odometry(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+def test_blt_writes_groundtruth_csv_from_odometry(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     sequence_path.mkdir(parents=True)
     odom = _odometry("odom", "gps", (1.0, 2.0, 3.0))
 
-    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+    rows = BLT_dataset._groundtruth_rows_from_odometry_messages(
         [(1654690000000000000, odom)],
         tf_edges={},
         target_frame="gps",
     )
-    dataset._write_groundtruth_csv(BACCHUS_SEQUENCE, rows)
+    dataset._write_groundtruth_csv(BLT_SEQUENCE, rows)
 
     with open(sequence_path / "groundtruth.csv", newline="", encoding="utf-8") as f:
         csv_rows = list(csv.DictReader(f))
@@ -334,13 +348,13 @@ def test_bacchus_writes_groundtruth_csv_from_odometry(tmp_path):
     ]
 
 
-def test_bacchus_applies_tf_chain_from_gps_to_camera_frame():
+def test_blt_applies_tf_chain_from_gps_to_camera_frame():
     odom = _odometry("odom", "gps", (10.0, 0.0, 0.0))
-    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+    tf_edges = BLT_dataset._tf_edges_from_transforms(
         [_transform("gps", "front_camera", (1.0, 2.0, 3.0))]
     )
 
-    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+    rows = BLT_dataset._groundtruth_rows_from_odometry_messages(
         [(1654690000000000000, odom)],
         tf_edges=tf_edges,
         target_frame="front_camera",
@@ -351,8 +365,8 @@ def test_bacchus_applies_tf_chain_from_gps_to_camera_frame():
     np.testing.assert_allclose(rows[0][4:8], [0.0, 0.0, 0.0, 1.0])
 
 
-def test_bacchus_deduplicates_repeated_tf_edges():
-    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+def test_blt_deduplicates_repeated_tf_edges():
+    tf_edges = BLT_dataset._tf_edges_from_transforms(
         [
             _transform("gps", "front_camera", (1.0, 2.0, 3.0)),
             _transform("gps", "front_camera", (1.0, 2.0, 3.0)),
@@ -363,7 +377,7 @@ def test_bacchus_deduplicates_repeated_tf_edges():
     assert len(tf_edges["front_camera"]) == 1
 
 
-def test_bacchus_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatch):
+def test_blt_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatch):
     calls = []
 
     def fake_find(cls, tf_edges, source_frame, target_frame):
@@ -371,7 +385,7 @@ def test_bacchus_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatc
         return np.eye(4)
 
     monkeypatch.setattr(
-        BACCHUS_dataset,
+        BLT_dataset,
         "_find_tf_chain_matrix",
         classmethod(fake_find),
     )
@@ -380,7 +394,7 @@ def test_bacchus_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatc
         (1654690000000000000, _odometry("odom", "gps", (1.0, 0.0, 0.0))),
         (1654690000100000000, _odometry("odom", "gps", (2.0, 0.0, 0.0))),
     ]
-    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+    rows = BLT_dataset._groundtruth_rows_from_odometry_messages(
         odometry_messages,
         tf_edges={},
         target_frame="front_camera",
@@ -390,21 +404,21 @@ def test_bacchus_reuses_resolved_tf_chain_for_repeated_odometry_frame(monkeypatc
     assert calls == [("gps", "front_camera")]
 
 
-def test_bacchus_missing_tf_chain_names_frames_in_error():
+def test_blt_missing_tf_chain_names_frames_in_error():
     odom = _odometry("odom", "gps", (10.0, 0.0, 0.0))
-    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+    tf_edges = BLT_dataset._tf_edges_from_transforms(
         [_transform("map", "base_link", (1.0, 2.0, 3.0))]
     )
 
     with pytest.raises(ValueError, match="gps.*front_camera.*available frames.*base_link.*map"):
-        BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+        BLT_dataset._groundtruth_rows_from_odometry_messages(
             [(1654690000000000000, odom)],
             tf_edges=tf_edges,
             target_frame="front_camera",
         )
 
 
-def test_bacchus_decodes_compressed_image_messages():
+def test_blt_decodes_compressed_image_messages():
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
@@ -413,7 +427,7 @@ def test_bacchus_decodes_compressed_image_messages():
     ok, encoded = cv2.imencode(".jpg", image)
     assert ok
 
-    decoded = BACCHUS_dataset._message_to_bgr_image(
+    decoded = BLT_dataset._message_to_bgr_image(
         "sensor_msgs/msg/CompressedImage",
         SimpleNamespace(data=encoded.tobytes()),
     )
@@ -422,7 +436,7 @@ def test_bacchus_decodes_compressed_image_messages():
     assert decoded.dtype == image.dtype
 
 
-def test_bacchus_writes_decompressed_rgb_images_from_compressed_messages(tmp_path):
+def test_blt_writes_decompressed_rgb_images_from_compressed_messages(tmp_path):
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
@@ -432,7 +446,7 @@ def test_bacchus_writes_decompressed_rgb_images_from_compressed_messages(tmp_pat
     assert ok
     jpeg_bytes = encoded.tobytes()
 
-    image_path = BACCHUS_dataset._write_image_message(
+    image_path = BLT_dataset._write_image_message(
         output_path=tmp_path,
         timestamp_ns=1654690000000000000,
         msgtype="sensor_msgs/msg/CompressedImage",
@@ -447,7 +461,7 @@ def test_bacchus_writes_decompressed_rgb_images_from_compressed_messages(tmp_pat
     assert decoded[:, :, 2].mean() > 240
 
 
-def test_bacchus_writes_compressed_depth_messages(tmp_path):
+def test_blt_writes_compressed_depth_messages(tmp_path):
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
@@ -456,7 +470,7 @@ def test_bacchus_writes_compressed_depth_messages(tmp_path):
     assert ok
     compressed_depth_header = b"\x00" * 12
 
-    image_path = BACCHUS_dataset._write_depth_message(
+    image_path = BLT_dataset._write_depth_message(
         output_path=tmp_path,
         timestamp_ns=1654690000000000000,
         msgtype="sensor_msgs/msg/CompressedImage",
@@ -471,15 +485,15 @@ def test_bacchus_writes_compressed_depth_messages(tmp_path):
     np.testing.assert_array_equal(decoded, depth)
 
 
-def test_bacchus_create_rgb_csv_uses_current_vslamlab_contract(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+def test_blt_create_rgb_csv_uses_current_vslamlab_contract(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     rgb_path.mkdir(parents=True)
     (rgb_path / "1654690000000000000.png").write_bytes(b"fake")
     (rgb_path / "1654690000100000000.png").write_bytes(b"fake")
 
-    dataset.create_rgb_csv(BACCHUS_SEQUENCE)
+    dataset.create_rgb_csv(BLT_SEQUENCE)
 
     with open(sequence_path / "rgb.csv", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -496,10 +510,10 @@ def test_bacchus_create_rgb_csv_uses_current_vslamlab_contract(tmp_path):
     ]
 
 
-def test_bacchus_create_rgb_csv_pairs_nearest_depth_frames(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_create_rgb_csv_pairs_nearest_depth_frames(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
     dataset.modes = ["mono", "rgbd"]
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     depth_path = sequence_path / "depth_0"
     rgb_path.mkdir(parents=True)
@@ -510,7 +524,7 @@ def test_bacchus_create_rgb_csv_pairs_nearest_depth_frames(tmp_path):
     (depth_path / "2900.png").write_bytes(b"fake")
     (depth_path / "7000.png").write_bytes(b"fake")
 
-    dataset.create_rgb_csv(BACCHUS_SEQUENCE)
+    dataset.create_rgb_csv(BLT_SEQUENCE)
 
     with open(sequence_path / "rgb.csv", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -531,24 +545,24 @@ def test_bacchus_create_rgb_csv_pairs_nearest_depth_frames(tmp_path):
     ]
 
 
-def test_bacchus_writes_calibration_yaml_from_camera_info(tmp_path):
+def test_blt_writes_calibration_yaml_from_camera_info(tmp_path):
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     rgb_path.mkdir(parents=True)
     image = np.zeros((480, 640, 3), dtype=np.uint8)
     assert cv2.imwrite(str(rgb_path / "1654690000000000000.png"), image)
-    dataset._calibration_info_by_sequence[BACCHUS_SEQUENCE] = _camera_info(
+    dataset._calibration_info_by_sequence[BLT_SEQUENCE] = _camera_info(
         width=640,
         height=480,
         k=(610.0, 0.0, 320.0, 0.0, 612.0, 240.0, 0.0, 0.0, 1.0),
         d=(0.01, -0.02, 0.001, 0.002, 0.0),
     )
 
-    dataset.create_calibration_yaml(BACCHUS_SEQUENCE)
+    dataset.create_calibration_yaml(BLT_SEQUENCE)
 
     calibration_yaml = (sequence_path / "calibration.yaml").read_text(encoding="utf-8")
     assert "cam_name: rgb_0" in calibration_yaml
@@ -563,43 +577,64 @@ def test_bacchus_writes_calibration_yaml_from_camera_info(tmp_path):
     assert "image_dimension: [640, 480]" in calibration_yaml
 
 
-def test_bacchus_rejects_camera_info_with_mismatched_image_dimensions(tmp_path):
+def test_blt_rejects_camera_info_with_mismatched_image_dimensions(tmp_path):
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     rgb_path.mkdir(parents=True)
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     assert cv2.imwrite(str(rgb_path / "1654690000000000000.jpg"), image)
-    dataset._calibration_info_by_sequence[BACCHUS_SEQUENCE] = _camera_info(
+    dataset._calibration_info_by_sequence[BLT_SEQUENCE] = _camera_info(
         width=640,
         height=480,
     )
 
     with pytest.raises(ValueError, match="CameraInfo.*640x480.*image dimensions.*1920x1080"):
-        dataset.create_calibration_yaml(BACCHUS_SEQUENCE)
+        dataset.create_calibration_yaml(BLT_SEQUENCE)
 
 
-def test_bacchus_rejects_placeholder_calibration_for_hd_images(tmp_path):
+def test_blt_uses_tracked_calibration_profile_for_hd_images_without_camera_info(tmp_path):
     cv2 = pytest.importorskip("cv2")
     import numpy as np
 
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     rgb_path.mkdir(parents=True)
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     assert cv2.imwrite(str(rgb_path / "1654690000000000000.jpg"), image)
     dataset.camera_info_topics = []
 
-    with pytest.raises(ValueError, match="placeholder.*1920x1080.*BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION"):
-        dataset.create_calibration_yaml(BACCHUS_SEQUENCE)
+    dataset.create_calibration_yaml(BLT_SEQUENCE)
+
+    calibration_yaml = (sequence_path / "calibration.yaml").read_text(encoding="utf-8")
+    assert "focal_length: [1051.994384765625, 1051.994384765625]" in calibration_yaml
+    assert "principal_point: [952.2286987304688, 553.5765380859375]" in calibration_yaml
+    assert "image_dimension: [1920, 1080]" in calibration_yaml
+    diagnostics = dataset._read_diagnostics(sequence_path / "blt_diagnostics.yaml")
+    assert diagnostics["calibration_source"] == "tracked_calibration_yaml"
 
 
-def test_bacchus_duration_limit_stops_after_elapsed_time(tmp_path):
-    class FakeDataset(BACCHUS_dataset):
+def test_blt_loads_tracked_calibration_yaml(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
+
+    assert dataset.calibration_yaml_path.name == "dataset_blt_calibration.yaml"
+    assert dataset.calibration[BLT_SEQUENCE]["cam_model"] == "radtan5"
+    assert dataset.calibration[BLT_SEQUENCE]["focal_length"] == [
+        1051.994384765625,
+        1051.994384765625,
+    ]
+    assert dataset.calibration["ktima_2022_03"]["principal_point"] == [
+        952.2301635742188,
+        553.5770263671875,
+    ]
+
+
+def test_blt_duration_limit_stops_after_elapsed_time(tmp_path):
+    class FakeDataset(BLT_dataset):
         written_timestamps = []
 
         @staticmethod
@@ -626,15 +661,15 @@ def test_bacchus_duration_limit_stops_after_elapsed_time(tmp_path):
     assert FakeDataset.written_timestamps == [1_000_000_000, 1_500_000_000]
 
 
-def test_bacchus_extraction_fingerprint_changes_with_source_and_limits(tmp_path, monkeypatch):
+def test_blt_extraction_fingerprint_changes_with_source_and_limits(tmp_path, monkeypatch):
     root = tmp_path / "ktima"
-    monkeypatch.setenv("BACCHUS_KTIMA_ROOT", str(root))
-    monkeypatch.setenv("BACCHUS_MAX_SECONDS", "30")
-    dataset = get_dataset("bacchus", tmp_path)
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    monkeypatch.setenv("BLT_MAX_SECONDS", "30")
+    dataset = get_dataset("blt", tmp_path)
 
-    fingerprint = dataset._extraction_fingerprint(BACCHUS_SEQUENCE)
+    fingerprint = dataset._extraction_fingerprint(BLT_SEQUENCE)
 
-    assert fingerprint["source_bag"] == str(root / BACCHUS_BAG)
+    assert fingerprint["source_bag"] == str(root / BLT_BAG)
     assert fingerprint["max_seconds"] == 30.0
     assert fingerprint["image_topic"] == "/front/zed_node/rgb/image_rect_color/compressed"
     assert "depth_topic" not in fingerprint
@@ -644,18 +679,18 @@ def test_bacchus_extraction_fingerprint_changes_with_source_and_limits(tmp_path,
     assert fingerprint["camera_frame"] == "front_left_camera_optical_frame"
 
 
-def test_bacchus_stale_rgb_outputs_are_regenerated_when_fingerprint_changes(tmp_path, monkeypatch):
+def test_blt_stale_rgb_outputs_are_regenerated_when_fingerprint_changes(tmp_path, monkeypatch):
     root = tmp_path / "ktima"
-    monkeypatch.setenv("BACCHUS_KTIMA_ROOT", str(root))
-    monkeypatch.setenv("BACCHUS_MAX_SECONDS", "30")
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    monkeypatch.setenv("BLT_MAX_SECONDS", "30")
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     rgb_path = sequence_path / "rgb_0"
     rgb_path.mkdir(parents=True)
     stale = rgb_path / "1000.jpg"
     stale.write_bytes(b"stale")
     dataset._update_diagnostics(
-        BACCHUS_SEQUENCE,
+        BLT_SEQUENCE,
         {"extraction_fingerprint": {"max_seconds": 360.0}},
     )
 
@@ -677,36 +712,37 @@ def test_bacchus_stale_rgb_outputs_are_regenerated_when_fingerprint_changes(tmp_
 
     monkeypatch.setattr(dataset, "_extract_rgb_images", fake_extract)
 
-    dataset.create_rgb_folder(BACCHUS_SEQUENCE)
+    dataset.create_rgb_folder(BLT_SEQUENCE)
 
     assert calls
     assert not stale.exists()
     assert (rgb_path / "2000.jpg").exists()
-    diagnostics = dataset._read_diagnostics(sequence_path / "bacchus_diagnostics.yaml")
-    assert diagnostics["extraction_fingerprint"] == dataset._extraction_fingerprint(BACCHUS_SEQUENCE)
+    diagnostics = dataset._read_diagnostics(sequence_path / "blt_diagnostics.yaml")
+    assert diagnostics["extraction_fingerprint"] == dataset._extraction_fingerprint(BLT_SEQUENCE)
 
 
-def test_bacchus_download_sequence_reruns_when_available_outputs_are_stale(tmp_path, monkeypatch):
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+def test_blt_download_sequence_reruns_when_available_outputs_are_stale(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(tmp_path / "ktima"))
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     (sequence_path / "rgb_0").mkdir(parents=True)
     for name in ("rgb.csv", "calibration.yaml", "groundtruth.csv"):
         (sequence_path / name).write_text("header\n1\n", encoding="utf-8")
-    (sequence_path / "bacchus_diagnostics.yaml").write_text(
+    (sequence_path / "blt_diagnostics.yaml").write_text(
         yaml.safe_dump({"extraction_fingerprint": {"max_seconds": 999.0}}),
         encoding="utf-8",
     )
     calls = []
     monkeypatch.setattr(dataset, "download_process", lambda sequence_name: calls.append(sequence_name))
 
-    dataset.download_sequence(BACCHUS_SEQUENCE)
+    dataset.download_sequence(BLT_SEQUENCE)
 
-    assert calls == [BACCHUS_SEQUENCE]
+    assert calls == [BLT_SEQUENCE]
 
 
-def test_bacchus_groundtruth_diagnostics_record_frame_chain_and_overlap(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
-    sequence_path = dataset.dataset_path / BACCHUS_SEQUENCE
+def test_blt_groundtruth_diagnostics_record_frame_chain_and_overlap(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
     sequence_path.mkdir(parents=True)
     rows = [
         [1_000_000_000, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
@@ -714,7 +750,7 @@ def test_bacchus_groundtruth_diagnostics_record_frame_chain_and_overlap(tmp_path
     ]
 
     dataset._write_groundtruth_csv(
-        BACCHUS_SEQUENCE,
+        BLT_SEQUENCE,
         rows,
         diagnostics={
             "groundtruth_topic": "/odometry/gps",
@@ -726,7 +762,7 @@ def test_bacchus_groundtruth_diagnostics_record_frame_chain_and_overlap(tmp_path
         },
     )
 
-    diagnostics = dataset._read_diagnostics(sequence_path / "bacchus_diagnostics.yaml")
+    diagnostics = dataset._read_diagnostics(sequence_path / "blt_diagnostics.yaml")
 
     assert diagnostics["groundtruth_topic"] == "/odometry/gps"
     assert diagnostics["groundtruth_source_frame"] == "gps"
@@ -737,8 +773,9 @@ def test_bacchus_groundtruth_diagnostics_record_frame_chain_and_overlap(tmp_path
     assert diagnostics["rgb_groundtruth_overlap_ns"] == [1_000_000_000, 2_000_000_000]
 
 
-def test_bacchus_extraction_gate_reports_failures_and_blocks_experiments(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_extraction_gate_reports_failures_and_blocks_experiments(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(tmp_path / "ktima"))
+    dataset = get_dataset("blt", tmp_path)
     good_sequence = "ktima_2022_03"
     bad_sequence = "ktima_2022_04"
     good_path = dataset.dataset_path / good_sequence
@@ -747,7 +784,7 @@ def test_bacchus_extraction_gate_reports_failures_and_blocks_experiments(tmp_pat
     (bad_path / "rgb_0").mkdir(parents=True)
     for name in ("rgb.csv", "calibration.yaml", "groundtruth.csv"):
         (good_path / name).write_text("header\n1\n", encoding="utf-8")
-    (good_path / "bacchus_diagnostics.yaml").write_text(
+    (good_path / "blt_diagnostics.yaml").write_text(
         yaml.safe_dump(
             {
                 "image_topic": "/front/zed_node/rgb/image_rect_color/compressed",
@@ -781,8 +818,9 @@ def test_bacchus_extraction_gate_reports_failures_and_blocks_experiments(tmp_pat
     assert any(item["sequence"] == bad_sequence for item in report["failures"])
 
 
-def test_bacchus_extraction_gate_requires_identical_contract(tmp_path):
-    dataset = get_dataset("bacchus", tmp_path)
+def test_blt_extraction_gate_requires_identical_contract(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(tmp_path / "ktima"))
+    dataset = get_dataset("blt", tmp_path)
     for sequence_name, image_topic in [
         ("ktima_2022_03", "/front/zed_node/rgb/image_rect_color/compressed"),
         ("ktima_2022_04", "/other/image/compressed"),
@@ -791,7 +829,7 @@ def test_bacchus_extraction_gate_requires_identical_contract(tmp_path):
         (sequence_path / "rgb_0").mkdir(parents=True)
         for name in ("rgb.csv", "calibration.yaml", "groundtruth.csv"):
             (sequence_path / name).write_text("header\n1\n", encoding="utf-8")
-        (sequence_path / "bacchus_diagnostics.yaml").write_text(
+        (sequence_path / "blt_diagnostics.yaml").write_text(
             yaml.safe_dump(
                 {
                     "image_topic": image_topic,
@@ -827,7 +865,7 @@ def test_dynamic_tf_chain_uses_timestamp_specific_transform():
         (1_000_000_000, _odometry("odom", "gps", (0.0, 0.0, 0.0))),
         (2_000_000_000, _odometry("odom", "gps", (0.0, 0.0, 0.0))),
     ]
-    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+    tf_edges = BLT_dataset._tf_edges_from_transforms(
         [
             _transform("gps", "front_camera", (1.0, 0.0, 0.0)),
             _transform("gps", "front_camera", (2.0, 0.0, 0.0)),
@@ -835,7 +873,7 @@ def test_dynamic_tf_chain_uses_timestamp_specific_transform():
         timestamps_ns=[1_000_000_000, 2_000_000_000],
     )
 
-    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+    rows = BLT_dataset._groundtruth_rows_from_odometry_messages(
         odometry_messages,
         tf_edges=tf_edges,
         target_frame="front_camera",
@@ -872,15 +910,15 @@ def test_dpvo_experiment_can_override_settings_yaml(tmp_path):
             "mode": "mono",
             "verbose": 0,
             "network": tmp_path / "dpvo.pth",
-            "settings_yaml": tmp_path / "dpvo_bacchus_loop.yaml",
+            "settings_yaml": tmp_path / "dpvo_blt_loop.yaml",
         },
     )
     dataset = SimpleNamespace(
-        dataset_path=tmp_path / "benchmark" / "BACCHUS",
-        dataset_folder="BACCHUS",
+        dataset_path=tmp_path / "benchmark" / "BLT",
+        dataset_folder="BLT_dataset",
     )
 
-    command = baseline.build_execute_command("00000", exp, dataset, BACCHUS_SEQUENCE)
+    command = baseline.build_execute_command("00000", exp, dataset, BLT_SEQUENCE)
 
-    assert f"--settings_yaml {tmp_path / 'dpvo_bacchus_loop.yaml'}" in command
+    assert f"--settings_yaml {tmp_path / 'dpvo_blt_loop.yaml'}" in command
     assert str(baseline.settings_yaml) not in command

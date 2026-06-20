@@ -21,32 +21,35 @@ except ImportError:
 from Datasets.DatasetVSLAMLab import DatasetVSLAMLab
 
 
-class BACCHUS_dataset(DatasetVSLAMLab):
-    """BACCHUS ktima local rosbag dataset helper."""
+class BLT_dataset(DatasetVSLAMLab):
+    """BLT ktima local rosbag dataset helper."""
 
-    def __init__(self, benchmark_path: str | Path, dataset_name: str = "bacchus") -> None:
+    def __init__(self, benchmark_path: str | Path, dataset_name: str = "blt") -> None:
         super().__init__(dataset_name, Path(benchmark_path))
 
         with open(self.yaml_file, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
+        if "dataset_folder" in cfg:
+            self.dataset_folder = str(cfg["dataset_folder"])
+            self.dataset_path = self.benchmark_path / self.dataset_folder
         self.sequence_nicknames = [s.replace("_", " ") for s in self.sequence_names]
-        self.source_root = Path(
-            os.environ.get(cfg.get("source_root_env", "BACCHUS_KTIMA_ROOT"), cfg.get("source_root_default", ""))
-        ).expanduser()
+        self.source_root_env = cfg.get("source_root_env", "BLT_KTIMA_ROOT")
+        source_root_value = os.environ.get(self.source_root_env, cfg.get("source_root_default", ""))
+        self.source_root = Path(source_root_value).expanduser() if source_root_value else None
         self.source_bags = dict(cfg["source_bags"])
         self.image_topic = os.environ.get(cfg["image_topic_env"], cfg["image_topic"])
         self.camera_info_topics = list(cfg.get("camera_info_topics", []))
-        camera_info_override = os.environ.get(cfg.get("camera_info_topic_env", "BACCHUS_CAMERA_INFO_TOPIC"), "")
+        camera_info_override = os.environ.get(cfg.get("camera_info_topic_env", "BLT_CAMERA_INFO_TOPIC"), "")
         if camera_info_override:
             self.camera_info_topics = [camera_info_override]
         self.depth_topic = os.environ.get(
-            cfg.get("depth_topic_env", "BACCHUS_DEPTH_TOPIC"),
+            cfg.get("depth_topic_env", "BLT_DEPTH_TOPIC"),
             cfg.get("depth_topic", ""),
         )
         self.depth_camera_info_topics = list(cfg.get("depth_camera_info_topics", []))
         depth_camera_info_override = os.environ.get(
-            cfg.get("depth_camera_info_topic_env", "BACCHUS_DEPTH_CAMERA_INFO_TOPIC"),
+            cfg.get("depth_camera_info_topic_env", "BLT_DEPTH_CAMERA_INFO_TOPIC"),
             "",
         )
         if depth_camera_info_override:
@@ -60,17 +63,17 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         self.groundtruth_frame_source = cfg.get("groundtruth_frame_source", "tf")
         self.tf_topics = list(cfg.get("tf_topics", ["/tf_static", "/tf"]))
         self.camera_frame = os.environ.get(
-            cfg.get("camera_frame_env", "BACCHUS_CAMERA_FRAME"),
+            cfg.get("camera_frame_env", "BLT_CAMERA_FRAME"),
             cfg.get("camera_frame", ""),
         )
         self.camera_frame_candidates = list(cfg.get("camera_frame_candidates", []))
         self.max_frames = int(os.environ.get(cfg["max_frames_env"], cfg.get("max_frames", 0)))
-        self.max_seconds = float(os.environ.get(cfg.get("max_seconds_env", "BACCHUS_MAX_SECONDS"), cfg.get("max_seconds", 0.0)))
+        self.max_seconds = float(os.environ.get(cfg.get("max_seconds_env", "BLT_MAX_SECONDS"), cfg.get("max_seconds", 0.0)))
         self.allow_placeholder_calibration = os.environ.get(
-            cfg.get("allow_placeholder_calibration_env", "BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION"),
+            cfg.get("allow_placeholder_calibration_env", "BLT_ALLOW_PLACEHOLDER_CALIBRATION"),
             "",
         ).lower() in {"1", "true", "yes", "on"}
-        self.calibration = cfg["calibration"]
+        self.calibration = self._load_calibration(cfg)
         self._calibration_info_by_sequence: dict[str, Any] = {}
         self._calibration_info_topic_by_sequence: dict[str, str] = {}
 
@@ -87,7 +90,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         bag_path = self.get_source_bag_path(sequence_name)
         if not bag_path.is_file():
             raise FileNotFoundError(
-                f"Missing BACCHUS source bag for '{sequence_name}': {bag_path}"
+                f"Missing BLT source bag for '{sequence_name}': {bag_path}"
             )
         (self.dataset_path / sequence_name).mkdir(parents=True, exist_ok=True)
 
@@ -135,7 +138,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
             if needs_depth:
                 if not self.depth_topic:
-                    raise ValueError("BACCHUS RGB-D mode requires a configured depth topic")
+                    raise ValueError("BLT RGB-D mode requires a configured depth topic")
                 depth_path.mkdir(parents=True, exist_ok=True)
                 depth_extraction_info = self._extract_depth_images(
                     bag_path=bag_path,
@@ -154,7 +157,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         image_paths = self._rgb_image_paths(rgb_path)
         if not image_paths:
-            raise FileNotFoundError(f"No BACCHUS RGB images found in {rgb_path}")
+            raise FileNotFoundError(f"No BLT RGB images found in {rgb_path}")
         depth_paths = []
         if "rgbd" in self.modes:
             depth_paths = self._depth_image_paths(sequence_path / "depth_0")
@@ -193,7 +196,11 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 self._calibration_info_by_sequence[sequence_name] = camera_info
                 self._calibration_info_topic_by_sequence[sequence_name] = camera_info_topic
 
-        calibration_source = "dataset_yaml"
+        calibration_source = (
+            "tracked_calibration_yaml"
+            if self.calibration_yaml_path != self.yaml_file
+            else "dataset_yaml"
+        )
         calibration_diagnostics: dict[str, Any] = {}
         if camera_info is not None:
             self._validate_camera_info_dimensions(sequence_name, camera_info)
@@ -296,11 +303,27 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
     def get_source_bag_path(self, sequence_name: str) -> Path:
         if sequence_name not in self.source_bags:
-            raise ValueError(f"Unknown BACCHUS sequence: {sequence_name}")
+            raise ValueError(f"Unknown BLT sequence: {sequence_name}")
         source_bag = Path(self.source_bags[sequence_name]).expanduser()
         if source_bag.is_absolute():
             return source_bag
+        if self.source_root is None:
+            raise RuntimeError(
+                f"Set {self.source_root_env} to the local BLT ktima root before resolving "
+                f"relative source bag for '{sequence_name}': {source_bag}"
+            )
         return self.source_root / source_bag
+
+    def _load_calibration(self, cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        calibration_file = cfg.get("calibration_file")
+        if calibration_file:
+            self.calibration_yaml_path = self.yaml_file.parent / calibration_file
+            with open(self.calibration_yaml_path, "r", encoding="utf-8") as f:
+                calibration_cfg = yaml.safe_load(f) or {}
+            return dict(calibration_cfg["calibration"])
+
+        self.calibration_yaml_path = self.yaml_file
+        return dict(cfg["calibration"])
 
     def get_image_topic_candidates(self) -> list[str]:
         image_topic = self.image_topic.rstrip("/")
@@ -352,7 +375,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             "rgb.csv",
             "calibration.yaml",
             "groundtruth.csv",
-            "bacchus_diagnostics.yaml",
+            "blt_diagnostics.yaml",
         ):
             path = sequence_path / file_name
             if path.exists():
@@ -380,7 +403,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     def _rgb_images_cover_seconds(image_paths: list[Path], max_seconds: float) -> bool:
         if len(image_paths) < 2:
             return False
-        timestamps = [BACCHUS_dataset._timestamp_from_image_name(path) for path in image_paths]
+        timestamps = [BLT_dataset._timestamp_from_image_name(path) for path in image_paths]
         duration_s = (max(timestamps) - min(timestamps)) / 1e9
         return duration_s >= max_seconds
 
@@ -403,8 +426,8 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         frames = ", ".join(sorted(available_frames)) or "<none>"
         raise ValueError(
-            "Could not infer BACCHUS camera frame from TF. "
-            f"Set BACCHUS_CAMERA_FRAME. Available frames: {frames}"
+            "Could not infer BLT camera frame from TF. "
+            f"Set BLT_CAMERA_FRAME. Available frames: {frames}"
         )
 
     def _extract_groundtruth_rows(
@@ -454,14 +477,14 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
                 if not connection.msgtype.endswith("/Odometry"):
                     raise TypeError(
-                        f"Unsupported BACCHUS groundtruth message type on "
+                        f"Unsupported BLT groundtruth message type on "
                         f"{self.groundtruth_topic}: {connection.msgtype}"
                     )
                 odometry_messages.append((timestamp_ns, msg))
 
         if not odometry_messages:
             raise RuntimeError(
-                f"No BACCHUS odometry groundtruth messages extracted from {bag_path}:"
+                f"No BLT odometry groundtruth messages extracted from {bag_path}:"
                 f"{self.groundtruth_topic}"
             )
 
@@ -548,7 +571,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         k = list(getattr(camera_info, "k", getattr(camera_info, "K", [])))
         if len(k) != 9:
-            raise ValueError("BACCHUS CameraInfo must contain a 3x3 K matrix")
+            raise ValueError("BLT CameraInfo must contain a 3x3 K matrix")
         calibration = {
             "cam_model": cam_model,
             "focal_length": [float(k[0]), float(k[4])],
@@ -573,9 +596,9 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         looks_hd = width >= 1280 or height >= 720
         if looks_placeholder and looks_hd:
             raise ValueError(
-                "BACCHUS placeholder calibration cannot be used for "
+                "BLT placeholder calibration cannot be used for "
                 f"{width}x{height} images. Extract CameraInfo or set "
-                "BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION=1 to acknowledge the limitation."
+                "BLT_ALLOW_PLACEHOLDER_CALIBRATION=1 to acknowledge the limitation."
             )
 
     def _validate_camera_info_dimensions(self, sequence_name: str, camera_info: Any) -> None:
@@ -588,7 +611,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         info_height = int(getattr(camera_info, "height", 0))
         if info_width and info_height and (info_width, info_height) != (image_width, image_height):
             raise ValueError(
-                f"BACCHUS CameraInfo dimensions {info_width}x{info_height} do not match "
+                f"BLT CameraInfo dimensions {info_width}x{info_height} do not match "
                 f"extracted image dimensions {image_width}x{image_height} for {sequence_name}."
             )
 
@@ -596,7 +619,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     def _first_rgb_image_dimension(rgb_path: Path) -> tuple[int, int] | None:
         import cv2
 
-        image_paths = BACCHUS_dataset._rgb_image_paths(rgb_path)
+        image_paths = BLT_dataset._rgb_image_paths(rgb_path)
         if not image_paths:
             return None
         image = cv2.imread(str(image_paths[0]))
@@ -606,7 +629,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         return width, height
 
     def _diagnostics_path(self, sequence_name: str) -> Path:
-        return self.dataset_path / sequence_name / "bacchus_diagnostics.yaml"
+        return self.dataset_path / sequence_name / "blt_diagnostics.yaml"
 
     def validate_extraction_gate(self, sequence_names: list[str] | None = None) -> dict[str, Any]:
         if sequence_names is None:
@@ -704,7 +727,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             sequence_path / "rgb.csv",
             sequence_path / "calibration.yaml",
             sequence_path / "groundtruth.csv",
-            sequence_path / "bacchus_diagnostics.yaml",
+            sequence_path / "blt_diagnostics.yaml",
         ]
         for path in required_paths:
             if not path.exists():
@@ -819,7 +842,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 p for p in rgb_path.iterdir()
                 if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}
             ),
-            key=BACCHUS_dataset._timestamp_from_image_name,
+            key=BLT_dataset._timestamp_from_image_name,
         )
 
     @staticmethod
@@ -831,7 +854,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 p for p in depth_path.iterdir()
                 if p.is_file() and p.suffix.lower() == ".png"
             ),
-            key=BACCHUS_dataset._timestamp_from_image_name,
+            key=BLT_dataset._timestamp_from_image_name,
         )
 
     @staticmethod
@@ -840,7 +863,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             return int(image_path.stem)
         except ValueError as exc:
             raise ValueError(
-                f"BACCHUS RGB image filenames must be nanosecond timestamps: {image_path.name}"
+                f"BLT RGB image filenames must be nanosecond timestamps: {image_path.name}"
             ) from exc
 
     @classmethod
@@ -966,9 +989,9 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         bag_path: Path,
         image_topics: list[str],
     ):
-        with BACCHUS_dataset._open_fast_ros1_stream(bag_path) as reader:
+        with BLT_dataset._open_fast_ros1_stream(bag_path) as reader:
             available_topics = [c.topic for c in reader.connections]
-            selected_topic = BACCHUS_dataset._select_first_available_topic(
+            selected_topic = BLT_dataset._select_first_available_topic(
                 image_topics,
                 available_topics,
                 label="Image",
@@ -1223,13 +1246,13 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     @staticmethod
     def _matrix_from_translation_quaternion(translation: np.ndarray, quaternion: np.ndarray) -> np.ndarray:
         matrix = np.eye(4)
-        matrix[:3, :3] = BACCHUS_dataset._rotation_matrix_from_quaternion(quaternion)
+        matrix[:3, :3] = BLT_dataset._rotation_matrix_from_quaternion(quaternion)
         matrix[:3, 3] = translation
         return matrix
 
     @staticmethod
     def _rotation_matrix_from_quaternion(quaternion: np.ndarray) -> np.ndarray:
-        x, y, z, w = BACCHUS_dataset._normalize_quaternion(quaternion)
+        x, y, z, w = BLT_dataset._normalize_quaternion(quaternion)
         return np.array([
             [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
             [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
@@ -1265,7 +1288,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 x = (rotation[0, 2] + rotation[2, 0]) / scale
                 y = (rotation[1, 2] + rotation[2, 1]) / scale
                 z = 0.25 * scale
-        return BACCHUS_dataset._normalize_quaternion(np.array([x, y, z, w]))
+        return BLT_dataset._normalize_quaternion(np.array([x, y, z, w]))
 
     @staticmethod
     def _normalize_quaternion(quaternion: np.ndarray) -> np.ndarray:
@@ -1295,7 +1318,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     def _available_tf_frames(tf_edges: dict[str, list[tuple[str, np.ndarray]]]) -> set[str]:
         frames = set(tf_edges.keys())
         for edges in tf_edges.values():
-            frames.update(BACCHUS_dataset._edge_frame(edge) for edge in edges)
+            frames.update(BLT_dataset._edge_frame(edge) for edge in edges)
         return frames
 
     @staticmethod
@@ -1323,12 +1346,12 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         msgtype: str,
         msg: Any,
     ) -> Path:
-        image = BACCHUS_dataset._message_to_bgr_image(msgtype, msg)
+        image = BLT_dataset._message_to_bgr_image(msgtype, msg)
         image_path = output_path / f"{timestamp_ns}.png"
         import cv2
 
         if not cv2.imwrite(str(image_path), image):
-            raise RuntimeError(f"Could not write BACCHUS RGB image: {image_path}")
+            raise RuntimeError(f"Could not write BLT RGB image: {image_path}")
         return image_path
 
     @staticmethod
@@ -1338,21 +1361,21 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         msgtype: str,
         msg: Any,
     ) -> Path:
-        depth = BACCHUS_dataset._message_to_depth_image(msgtype, msg)
+        depth = BLT_dataset._message_to_depth_image(msgtype, msg)
         image_path = output_path / f"{timestamp_ns}.png"
         import cv2
 
         if not cv2.imwrite(str(image_path), depth):
-            raise RuntimeError(f"Could not write BACCHUS depth image: {image_path}")
+            raise RuntimeError(f"Could not write BLT depth image: {image_path}")
         return image_path
 
     @staticmethod
     def _message_to_depth_image(msgtype: str, msg: Any) -> np.ndarray:
         if msgtype.endswith("/CompressedImage"):
-            return BACCHUS_dataset._decode_compressed_depth_image(msg)
+            return BLT_dataset._decode_compressed_depth_image(msg)
 
         if not msgtype.endswith("/Image"):
-            raise TypeError(f"Unsupported BACCHUS depth image message type: {msgtype}")
+            raise TypeError(f"Unsupported BLT depth image message type: {msgtype}")
 
         height = int(msg.height)
         width = int(msg.width)
@@ -1365,7 +1388,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             depth_m = np.frombuffer(raw, dtype=np.float32).reshape((height, width))
             return np.nan_to_num(depth_m * 1000.0, nan=0.0, posinf=0.0, neginf=0.0).astype(np.uint16)
 
-        raise ValueError(f"Unsupported BACCHUS depth image encoding: {msg.encoding}")
+        raise ValueError(f"Unsupported BLT depth image encoding: {msg.encoding}")
 
     @staticmethod
     def _decode_compressed_depth_image(msg: Any) -> np.ndarray:
@@ -1383,7 +1406,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             if depth is not None:
                 return depth
 
-        raise ValueError("Could not decode BACCHUS compressedDepth image message")
+        raise ValueError("Could not decode BLT compressedDepth image message")
 
     @staticmethod
     def _message_to_bgr_image(msgtype: str, msg: Any) -> np.ndarray:
@@ -1393,11 +1416,11 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             data = np.frombuffer(bytes(msg.data), dtype=np.uint8)
             image = cv2.imdecode(data, cv2.IMREAD_COLOR)
             if image is None:
-                raise ValueError("Could not decode BACCHUS compressed image message")
+                raise ValueError("Could not decode BLT compressed image message")
             return image
 
         if not msgtype.endswith("/Image"):
-            raise TypeError(f"Unsupported BACCHUS image message type: {msgtype}")
+            raise TypeError(f"Unsupported BLT image message type: {msgtype}")
 
         height = int(msg.height)
         width = int(msg.width)
@@ -1419,7 +1442,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
             return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
 
-        raise ValueError(f"Unsupported BACCHUS image encoding: {msg.encoding}")
+        raise ValueError(f"Unsupported BLT image encoding: {msg.encoding}")
 
 
 class _FastRosbag1Stream:
@@ -1446,7 +1469,7 @@ class _FastRosbag1Stream:
             from rosbags.typesys import Stores, get_types_from_idl, get_types_from_msg, get_typestore
         except ImportError as exc:
             raise RuntimeError(
-                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
+                "The BLT dataset requires the 'rosbags' Python package to read source bags."
             ) from exc
 
         reader = Reader(self.bag_path)
@@ -1506,12 +1529,12 @@ class _FastRosbag1Stream:
 
     def deserialize(self, rawdata: bytes, msgtype: str) -> object:
         if self.typestore is None:
-            raise RuntimeError("BACCHUS fast ROS1 stream is not open")
+            raise RuntimeError("BLT fast ROS1 stream is not open")
         return self.typestore.deserialize_ros1(rawdata, msgtype)
 
     def messages(self, connections):
         if self.reader is None or self.reader.bio is None:
-            raise RuntimeError("BACCHUS fast ROS1 stream is not open")
+            raise RuntimeError("BLT fast ROS1 stream is not open")
         from rosbags.rosbag1.reader import Header, RecordType, read_bytes, read_uint32
 
         selected_ids = {connection.id for connection in connections}

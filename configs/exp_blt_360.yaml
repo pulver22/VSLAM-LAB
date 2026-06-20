@@ -1,0 +1,11 @@
+exp_blt_360_dpvo_no_loop:
+  Config: config_blt.yaml
+  NumRuns: 1
+  Parameters: {mode: mono, verbose: 0, settings_yaml: configs/baselines/dpvo_blt_no_loop.yaml}
+  Module: dpvo
+
+exp_blt_360_dpvo_loop:
+  Config: config_blt.yaml
+  NumRuns: 1
+  Parameters: {mode: mono, verbose: 0, settings_yaml: configs/baselines/dpvo_blt_loop.yaml}
+  Module: dpvo
