@@ -1,8 +1,10 @@
 import csv
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from Datasets.dataset_files.dataset_bacchus import BACCHUS_dataset
 from Datasets.get_dataset import get_dataset, list_available_datasets
 
 
@@ -24,6 +26,36 @@ def test_bacchus_reports_missing_source_bag(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="missing.bag"):
         dataset.download_sequence_data("ktima_2022_06_08")
+
+
+def test_bacchus_uses_ros_compressed_transport_launch_defaults(tmp_path):
+    dataset = get_dataset("bacchus", tmp_path)
+
+    assert dataset.image_topic == "/front/zed_node/rgb/image_rect_color"
+    assert dataset.image_transport == "compressed"
+    assert dataset.decompressed_image_topic == "/front/zed_node/rgb_decompressed"
+    assert dataset.get_image_topic_candidates() == [
+        "/front/zed_node/rgb/image_rect_color/compressed",
+        "/front/zed_node/rgb/image_rect_color",
+    ]
+
+
+def test_bacchus_decodes_compressed_image_messages():
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    image = np.zeros((4, 6, 3), dtype=np.uint8)
+    image[:, :, 1] = 255
+    ok, encoded = cv2.imencode(".jpg", image)
+    assert ok
+
+    decoded = BACCHUS_dataset._message_to_bgr_image(
+        "sensor_msgs/msg/CompressedImage",
+        SimpleNamespace(data=encoded.tobytes()),
+    )
+
+    assert decoded.shape == image.shape
+    assert decoded.dtype == image.dtype
 
 
 def test_bacchus_create_rgb_csv_uses_current_vslamlab_contract(tmp_path):

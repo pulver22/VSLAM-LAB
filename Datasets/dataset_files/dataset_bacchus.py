@@ -31,6 +31,8 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             for name, rel_path in cfg["source_bags"].items()
         }
         self.image_topic = os.environ.get(cfg["image_topic_env"], cfg["image_topic"])
+        self.image_transport = cfg.get("image_transport", "raw")
+        self.decompressed_image_topic = cfg.get("decompressed_image_topic", self.image_topic)
         self.max_frames = int(os.environ.get(cfg["max_frames_env"], cfg.get("max_frames", 0)))
         self.calibration = cfg["calibration"]
 
@@ -51,7 +53,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         rgb_path.mkdir(parents=True, exist_ok=True)
         self._extract_rgb_images(
             bag_path=self.get_source_bag_path(sequence_name),
-            image_topic=self.image_topic,
+            image_topics=self.get_image_topic_candidates(),
             output_path=rgb_path,
             max_frames=self.max_frames,
         )
@@ -95,6 +97,22 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             raise ValueError(f"Unknown BACCHUS sequence: {sequence_name}")
         return Path(self.source_bags[sequence_name]).expanduser()
 
+    def get_image_topic_candidates(self) -> list[str]:
+        image_topic = self.image_topic.rstrip("/")
+        candidates: list[str] = []
+
+        if self.image_transport == "compressed":
+            if image_topic.endswith("/compressed"):
+                candidates.append(image_topic)
+                candidates.append(image_topic.removesuffix("/compressed"))
+            else:
+                candidates.append(f"{image_topic}/compressed")
+                candidates.append(image_topic)
+        else:
+            candidates.append(image_topic)
+
+        return list(dict.fromkeys(candidates))
+
     @staticmethod
     def _timestamp_from_image_name(image_path: Path) -> int:
         try:
@@ -107,7 +125,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     @staticmethod
     def _extract_rgb_images(
         bag_path: Path,
-        image_topic: str,
+        image_topics: list[str],
         output_path: Path,
         max_frames: int = 0,
     ) -> None:
@@ -120,15 +138,22 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         written = 0
         with AnyReader([bag_path]) as reader:
-            connections = [c for c in reader.connections if c.topic == image_topic]
+            connections = []
+            selected_topic = None
+            for image_topic in image_topics:
+                connections = [c for c in reader.connections if c.topic == image_topic]
+                if connections:
+                    selected_topic = image_topic
+                    break
+
             if not connections:
                 topics = ", ".join(sorted({c.topic for c in reader.connections}))
                 raise ValueError(
-                    f"Image topic '{image_topic}' not found in {bag_path}. Available topics: {topics}"
+                    f"Image topics {image_topics} not found in {bag_path}. Available topics: {topics}"
                 )
 
             messages = reader.messages(connections=connections)
-            for connection, timestamp_ns, rawdata in tqdm(messages, desc=f"Extracting {image_topic}"):
+            for connection, timestamp_ns, rawdata in tqdm(messages, desc=f"Extracting {selected_topic}"):
                 msg = reader.deserialize(rawdata, connection.msgtype)
                 image = BACCHUS_dataset._message_to_bgr_image(connection.msgtype, msg)
                 cv2.imwrite(str(output_path / f"{timestamp_ns}.png"), image)
