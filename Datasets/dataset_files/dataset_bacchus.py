@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import csv
 import os
+import re
+import shutil
 from collections import defaultdict, deque
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import yaml
-from tqdm import tqdm
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, **_kwargs):
+        return iterable
 
 from Datasets.DatasetVSLAMLab import DatasetVSLAMLab
 
@@ -25,17 +32,26 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         self.sequence_nicknames = [s.replace("_", " ") for s in self.sequence_names]
         self.source_root = Path(
-            os.environ.get(cfg["source_root_env"], cfg["source_root_default"])
+            os.environ.get(cfg.get("source_root_env", "BACCHUS_KTIMA_ROOT"), cfg.get("source_root_default", ""))
         ).expanduser()
-        self.source_bags = {
-            name: self.source_root / rel_path
-            for name, rel_path in cfg["source_bags"].items()
-        }
+        self.source_bags = dict(cfg["source_bags"])
         self.image_topic = os.environ.get(cfg["image_topic_env"], cfg["image_topic"])
         self.camera_info_topics = list(cfg.get("camera_info_topics", []))
         camera_info_override = os.environ.get(cfg.get("camera_info_topic_env", "BACCHUS_CAMERA_INFO_TOPIC"), "")
         if camera_info_override:
             self.camera_info_topics = [camera_info_override]
+        self.depth_topic = os.environ.get(
+            cfg.get("depth_topic_env", "BACCHUS_DEPTH_TOPIC"),
+            cfg.get("depth_topic", ""),
+        )
+        self.depth_camera_info_topics = list(cfg.get("depth_camera_info_topics", []))
+        depth_camera_info_override = os.environ.get(
+            cfg.get("depth_camera_info_topic_env", "BACCHUS_DEPTH_CAMERA_INFO_TOPIC"),
+            "",
+        )
+        if depth_camera_info_override:
+            self.depth_camera_info_topics = [depth_camera_info_override]
+        self.depth_factor = float(cfg.get("depth_factor", 1000.0))
         self.image_transport = cfg.get("image_transport", "raw")
         self.decompressed_image_topic = cfg.get("decompressed_image_topic", self.image_topic)
         self.groundtruth_topic = os.environ.get(
@@ -59,7 +75,10 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         self._calibration_info_topic_by_sequence: dict[str, str] = {}
 
     def download_sequence(self, sequence_name: str) -> None:
-        if self.check_sequence_availability(sequence_name, verbose=True) == "available":
+        if (
+            self.check_sequence_availability(sequence_name, verbose=True) == "available"
+            and self._sequence_outputs_match_current_fingerprint(sequence_name)
+        ):
             return
         self.dataset_path.mkdir(parents=True, exist_ok=True)
         self.download_process(sequence_name)
@@ -76,22 +95,56 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         sequence_path = self.dataset_path / sequence_name
         rgb_path = sequence_path / "rgb_0"
         existing_images = self._rgb_image_paths(rgb_path)
-        if self.max_frames > 0 and len(existing_images) >= self.max_frames:
-            return
-        if self.max_seconds > 0 and self._rgb_images_cover_seconds(existing_images, self.max_seconds):
-            return
-        if self.max_frames <= 0 and self.max_seconds <= 0 and existing_images:
-            return
+        fingerprint = self._extraction_fingerprint(sequence_name)
+        diagnostics = self._read_diagnostics(self._diagnostics_path(sequence_name))
+        if diagnostics.get("extraction_fingerprint") != fingerprint:
+            self._clear_generated_sequence_outputs(sequence_name)
+            existing_images = []
 
-        rgb_path.mkdir(parents=True, exist_ok=True)
-        extraction_info = self._extract_rgb_images(
-            bag_path=self.get_source_bag_path(sequence_name),
-            image_topics=self.get_image_topic_candidates(),
-            output_path=rgb_path,
-            max_frames=self.max_frames,
-            max_seconds=self.max_seconds,
-        )
-        self._update_diagnostics(sequence_name, extraction_info)
+        needs_rgb = True
+        if self.max_frames > 0 and len(existing_images) >= self.max_frames:
+            needs_rgb = False
+        if self.max_seconds > 0 and self._rgb_images_cover_seconds(existing_images, self.max_seconds):
+            needs_rgb = False
+        if self.max_frames <= 0 and self.max_seconds <= 0 and existing_images:
+            needs_rgb = False
+
+        bag_path = self.get_source_bag_path(sequence_name)
+        if needs_rgb:
+            rgb_path.mkdir(parents=True, exist_ok=True)
+            extraction_info = self._extract_rgb_images(
+                bag_path=bag_path,
+                image_topics=self.get_image_topic_candidates(),
+                output_path=rgb_path,
+                max_frames=self.max_frames,
+                max_seconds=self.max_seconds,
+            )
+            self._update_diagnostics(sequence_name, extraction_info)
+            self._update_diagnostics(sequence_name, {"extraction_fingerprint": fingerprint})
+
+        if "rgbd" in self.modes:
+            depth_path = sequence_path / "depth_0"
+            existing_depth_images = self._depth_image_paths(depth_path)
+            needs_depth = True
+            if self.max_frames > 0 and len(existing_depth_images) >= self.max_frames:
+                needs_depth = False
+            if self.max_seconds > 0 and self._rgb_images_cover_seconds(existing_depth_images, self.max_seconds):
+                needs_depth = False
+            if self.max_frames <= 0 and self.max_seconds <= 0 and existing_depth_images:
+                needs_depth = False
+
+            if needs_depth:
+                if not self.depth_topic:
+                    raise ValueError("BACCHUS RGB-D mode requires a configured depth topic")
+                depth_path.mkdir(parents=True, exist_ok=True)
+                depth_extraction_info = self._extract_depth_images(
+                    bag_path=bag_path,
+                    depth_topics=[self.depth_topic],
+                    output_path=depth_path,
+                    max_frames=self.max_frames,
+                    max_seconds=self.max_seconds,
+                )
+                self._update_diagnostics(sequence_name, depth_extraction_info)
 
     def create_rgb_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
@@ -99,18 +152,30 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         rgb_csv = sequence_path / "rgb.csv"
         tmp = rgb_csv.with_suffix(".csv.tmp")
 
-        image_paths = sorted(
-            p for p in rgb_path.iterdir()
-            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}
-        )
+        image_paths = self._rgb_image_paths(rgb_path)
         if not image_paths:
             raise FileNotFoundError(f"No BACCHUS RGB images found in {rgb_path}")
+        depth_paths = []
+        if "rgbd" in self.modes:
+            depth_paths = self._depth_image_paths(sequence_path / "depth_0")
 
         with open(tmp, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["ts_rgb_0 (ns)", "path_rgb_0"])
-            for image_path in image_paths:
-                writer.writerow([self._timestamp_from_image_name(image_path), f"rgb_0/{image_path.name}"])
+            if depth_paths:
+                writer.writerow(["ts_rgb_0 (ns)", "path_rgb_0", "ts_depth_0 (ns)", "path_depth_0"])
+                for image_path, depth_path in self._nearest_rgb_depth_pairs(image_paths, depth_paths):
+                    writer.writerow(
+                        [
+                            self._timestamp_from_image_name(image_path),
+                            f"rgb_0/{image_path.name}",
+                            self._timestamp_from_image_name(depth_path),
+                            f"depth_0/{depth_path.name}",
+                        ]
+                    )
+            else:
+                writer.writerow(["ts_rgb_0 (ns)", "path_rgb_0"])
+                for image_path in image_paths:
+                    writer.writerow([self._timestamp_from_image_name(image_path), f"rgb_0/{image_path.name}"])
 
         tmp.replace(rgb_csv)
 
@@ -131,6 +196,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         calibration_source = "dataset_yaml"
         calibration_diagnostics: dict[str, Any] = {}
         if camera_info is not None:
+            self._validate_camera_info_dimensions(sequence_name, camera_info)
             cal.update(self._camera_info_to_calibration(camera_info))
             calibration_source = "camera_info"
             calibration_diagnostics = {
@@ -144,18 +210,24 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
         rgb0: dict[str, Any] = {
             "cam_name": cal["cam_name"],
-            "cam_type": cal["cam_type"],
+            "cam_type": "rgb+depth" if "rgbd" in self.modes else cal["cam_type"],
             "cam_model": cal["cam_model"],
             "focal_length": cal["focal_length"],
             "principal_point": cal["principal_point"],
             "fps": float(cal.get("fps", self.rgb_hz)),
             "T_BS": np.eye(4),
         }
+        if "rgbd" in self.modes:
+            rgb0["depth_name"] = "depth_0"
+            rgb0["depth_factor"] = self.depth_factor
         if "distortion_type" in cal:
             rgb0["distortion_type"] = cal["distortion_type"]
         if "distortion_coefficients" in cal:
             rgb0["distortion_coefficients"] = cal["distortion_coefficients"]
-        self.write_calibration_yaml(sequence_name=sequence_name, rgb=[rgb0])
+        if "rgbd" in self.modes:
+            self.write_calibration_yaml(sequence_name=sequence_name, rgbd=[rgb0])
+        else:
+            self.write_calibration_yaml(sequence_name=sequence_name, rgb=[rgb0])
         self._update_diagnostics(
             sequence_name,
             {
@@ -181,6 +253,36 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
     def check_sequence_integrity(self, sequence_name: str, verbose: bool) -> bool:
         complete_sequence = super().check_sequence_integrity(sequence_name, verbose)
+        sequence_path = self.dataset_path / sequence_name
+        if "rgbd" in self.modes:
+            depth_path = sequence_path / "depth_0"
+            if not depth_path.is_dir():
+                if verbose:
+                    from loguru import logger
+
+                    from utilities import ws
+
+                    logger.error(f"\n{ws(4)}Missing Depth folder: {depth_path} !!!!!")
+                complete_sequence = False
+            rgb_csv = sequence_path / "rgb.csv"
+            if rgb_csv.is_file():
+                with open(rgb_csv, newline="", encoding="utf-8") as f:
+                    fieldnames = csv.DictReader(f).fieldnames or []
+                missing_depth_columns = {
+                    "ts_depth_0 (ns)",
+                    "path_depth_0",
+                }.difference(fieldnames)
+                if missing_depth_columns:
+                    if verbose:
+                        from loguru import logger
+
+                        from utilities import ws
+
+                        logger.error(
+                            f"\n{ws(4)}Missing RGB-D columns in {rgb_csv}: "
+                            f"{sorted(missing_depth_columns)} !!!!!"
+                        )
+                    complete_sequence = False
         groundtruth_csv = self.dataset_path / sequence_name / "groundtruth.csv"
         if not groundtruth_csv.is_file():
             if verbose:
@@ -195,7 +297,10 @@ class BACCHUS_dataset(DatasetVSLAMLab):
     def get_source_bag_path(self, sequence_name: str) -> Path:
         if sequence_name not in self.source_bags:
             raise ValueError(f"Unknown BACCHUS sequence: {sequence_name}")
-        return Path(self.source_bags[sequence_name]).expanduser()
+        source_bag = Path(self.source_bags[sequence_name]).expanduser()
+        if source_bag.is_absolute():
+            return source_bag
+        return self.source_root / source_bag
 
     def get_image_topic_candidates(self) -> list[str]:
         image_topic = self.image_topic.rstrip("/")
@@ -212,6 +317,50 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             candidates.append(image_topic)
 
         return list(dict.fromkeys(candidates))
+
+    def _extraction_fingerprint(self, sequence_name: str) -> dict[str, Any]:
+        fingerprint = {
+            "source_bag": str(self.get_source_bag_path(sequence_name)),
+            "image_topic": self.image_topic,
+            "image_transport": self.image_transport,
+            "camera_info_topics": self.camera_info_topics,
+            "groundtruth_topic": self.groundtruth_topic,
+            "tf_topics": self.tf_topics,
+            "camera_frame": self.camera_frame,
+            "camera_frame_candidates": self.camera_frame_candidates,
+            "max_frames": self.max_frames,
+            "max_seconds": self.max_seconds,
+            "modes": self.modes,
+        }
+        if "rgbd" in self.modes:
+            fingerprint.update(
+                {
+                    "depth_topic": self.depth_topic,
+                    "depth_camera_info_topics": self.depth_camera_info_topics,
+                    "depth_factor": self.depth_factor,
+                }
+            )
+        return fingerprint
+
+    def _clear_generated_sequence_outputs(self, sequence_name: str) -> None:
+        sequence_path = self.dataset_path / sequence_name
+        for directory_name in ("rgb_0", "depth_0"):
+            path = sequence_path / directory_name
+            if path.exists():
+                shutil.rmtree(path)
+        for file_name in (
+            "rgb.csv",
+            "calibration.yaml",
+            "groundtruth.csv",
+            "bacchus_diagnostics.yaml",
+        ):
+            path = sequence_path / file_name
+            if path.exists():
+                path.unlink()
+
+    def _sequence_outputs_match_current_fingerprint(self, sequence_name: str) -> bool:
+        diagnostics = self._read_diagnostics(self._diagnostics_path(sequence_name))
+        return diagnostics.get("extraction_fingerprint") == self._extraction_fingerprint(sequence_name)
 
     def _rgb_time_bounds(self, sequence_name: str) -> tuple[int, int] | None:
         rgb_csv = self.dataset_path / sequence_name / "rgb.csv"
@@ -263,13 +412,6 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         bag_path: Path,
         rgb_time_bounds: tuple[int, int] | None = None,
     ) -> tuple[list[list[Any]], dict[str, Any]]:
-        try:
-            from rosbags.highlevel import AnyReader
-        except ImportError as exc:
-            raise RuntimeError(
-                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
-            ) from exc
-
         odometry_messages: list[tuple[int, Any]] = []
         tf_transforms: list[Any] = []
         tf_timestamps: list[int] = []
@@ -277,7 +419,7 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         max_rgb_ts = rgb_time_bounds[1] if rgb_time_bounds else None
         margin_ns = int(2e9)
 
-        with AnyReader([bag_path]) as reader:
+        with self._open_fast_ros1_stream(bag_path) as reader:
             groundtruth_connections = [
                 c for c in reader.connections if c.topic == self.groundtruth_topic
             ]
@@ -371,17 +513,10 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         camera_info_topics: list[str],
         rgb_time_bounds: tuple[int, int] | None = None,
     ) -> tuple[str, Any] | None:
-        try:
-            from rosbags.highlevel import AnyReader
-        except ImportError as exc:
-            raise RuntimeError(
-                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
-            ) from exc
-
         min_rgb_ts = rgb_time_bounds[0] if rgb_time_bounds else None
         max_rgb_ts = rgb_time_bounds[1] if rgb_time_bounds else None
         margin_ns = int(2e9)
-        with AnyReader([bag_path]) as reader:
+        with self._open_fast_ros1_stream(bag_path) as reader:
             for camera_info_topic in camera_info_topics:
                 connections = [c for c in reader.connections if c.topic == camera_info_topic]
                 if not connections:
@@ -443,8 +578,24 @@ class BACCHUS_dataset(DatasetVSLAMLab):
                 "BACCHUS_ALLOW_PLACEHOLDER_CALIBRATION=1 to acknowledge the limitation."
             )
 
+    def _validate_camera_info_dimensions(self, sequence_name: str, camera_info: Any) -> None:
+        sequence_path = self.dataset_path / sequence_name
+        image_dimension = self._first_rgb_image_dimension(sequence_path / "rgb_0")
+        if image_dimension is None:
+            return
+        image_width, image_height = image_dimension
+        info_width = int(getattr(camera_info, "width", 0))
+        info_height = int(getattr(camera_info, "height", 0))
+        if info_width and info_height and (info_width, info_height) != (image_width, image_height):
+            raise ValueError(
+                f"BACCHUS CameraInfo dimensions {info_width}x{info_height} do not match "
+                f"extracted image dimensions {image_width}x{image_height} for {sequence_name}."
+            )
+
     @staticmethod
     def _first_rgb_image_dimension(rgb_path: Path) -> tuple[int, int] | None:
+        import cv2
+
         image_paths = BACCHUS_dataset._rgb_image_paths(rgb_path)
         if not image_paths:
             return None
@@ -456,6 +607,147 @@ class BACCHUS_dataset(DatasetVSLAMLab):
 
     def _diagnostics_path(self, sequence_name: str) -> Path:
         return self.dataset_path / sequence_name / "bacchus_diagnostics.yaml"
+
+    def validate_extraction_gate(self, sequence_names: list[str] | None = None) -> dict[str, Any]:
+        if sequence_names is None:
+            sequence_names = list(self.sequence_names)
+        report: dict[str, Any] = {
+            "ready_for_experiments": True,
+            "sequences": {},
+            "failures": [],
+            "later_inspection": [],
+        }
+        comparable_contract: dict[str, Any] | None = None
+        comparable_keys = [
+            "image_topic",
+            "calibration_source",
+            "camera_info_topic",
+            "camera_info_width",
+            "camera_info_height",
+            "groundtruth_topic",
+            "groundtruth_target_frame",
+        ]
+
+        for sequence_name in sequence_names:
+            sequence_path = self.dataset_path / sequence_name
+            diagnostics = self._read_diagnostics(self._diagnostics_path(sequence_name))
+            issues = self._extraction_gate_sequence_issues(sequence_name, diagnostics)
+            status = "failed" if issues else "ok"
+            if issues:
+                report["ready_for_experiments"] = False
+                for issue in issues:
+                    report["failures"].append({"sequence": sequence_name, "issue": issue})
+                    report["later_inspection"].append(f"{sequence_name}: {issue}")
+
+            summary = {
+                "status": status,
+                "path": str(sequence_path),
+                "availability": self.check_sequence_availability(sequence_name, verbose=False),
+                "image_topic": diagnostics.get("image_topic"),
+                "camera_info_topic": diagnostics.get("camera_info_topic"),
+                "image_count": diagnostics.get("image_count"),
+                "rgb_inferred_fps": diagnostics.get("rgb_inferred_fps"),
+                "rgb_duration_s": diagnostics.get("rgb_duration_s"),
+                "calibration_source": diagnostics.get("calibration_source"),
+                "camera_info_width": diagnostics.get("camera_info_width"),
+                "camera_info_height": diagnostics.get("camera_info_height"),
+                "groundtruth_topic": diagnostics.get("groundtruth_topic"),
+                "groundtruth_count": diagnostics.get("groundtruth_count"),
+                "groundtruth_path_length_m": diagnostics.get("groundtruth_path_length_m"),
+                "groundtruth_source_frame": diagnostics.get("groundtruth_source_frame"),
+                "groundtruth_target_frame": diagnostics.get("groundtruth_target_frame"),
+                "tf_chain": diagnostics.get("tf_chain"),
+                "tf_chain_dynamic": diagnostics.get("tf_chain_dynamic"),
+                "rgb_groundtruth_overlap_ns": diagnostics.get("rgb_groundtruth_overlap_ns"),
+            }
+            report["sequences"][sequence_name] = summary
+
+            if not issues:
+                contract = {key: diagnostics.get(key) for key in comparable_keys}
+                if comparable_contract is None:
+                    comparable_contract = contract
+                else:
+                    for key, expected in comparable_contract.items():
+                        actual = contract.get(key)
+                        if actual != expected:
+                            report["ready_for_experiments"] = False
+                            issue = (
+                                f"{sequence_name}: {key} differs from extraction gate "
+                                f"reference ({actual!r} != {expected!r})"
+                            )
+                            report["failures"].append({"sequence": sequence_name, "issue": issue})
+                            report["later_inspection"].append(issue)
+
+        return report
+
+    def write_extraction_gate_report(
+        self,
+        output_path: str | Path,
+        sequence_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        report = self.validate_extraction_gate(sequence_names)
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", encoding="utf-8") as f:
+            yaml.safe_dump(self._yaml_safe(report), f, sort_keys=True)
+        return report
+
+    def _extraction_gate_sequence_issues(
+        self,
+        sequence_name: str,
+        diagnostics: dict[str, Any],
+    ) -> list[str]:
+        sequence_path = self.dataset_path / sequence_name
+        issues: list[str] = []
+        required_paths = [
+            sequence_path / "rgb_0",
+            sequence_path / "rgb.csv",
+            sequence_path / "calibration.yaml",
+            sequence_path / "groundtruth.csv",
+            sequence_path / "bacchus_diagnostics.yaml",
+        ]
+        for path in required_paths:
+            if not path.exists():
+                issues.append(f"missing required output: {path.name}")
+
+        required_diagnostics = [
+            "image_topic",
+            "image_count",
+            "rgb_inferred_fps",
+            "rgb_duration_s",
+            "calibration_source",
+            "camera_info_topic",
+            "camera_info_width",
+            "camera_info_height",
+            "groundtruth_topic",
+            "groundtruth_count",
+            "groundtruth_path_length_m",
+            "groundtruth_source_frame",
+            "groundtruth_target_frame",
+            "tf_chain",
+            "tf_chain_dynamic",
+            "rgb_groundtruth_overlap_ns",
+            "extraction_fingerprint",
+        ]
+        for key in required_diagnostics:
+            if diagnostics.get(key) in (None, "", []):
+                issues.append(f"missing diagnostic: {key}")
+
+        if diagnostics.get("calibration_source") != "camera_info":
+            issues.append("calibration_source is not camera_info")
+        if diagnostics.get("groundtruth_topic") != self.groundtruth_topic:
+            issues.append(
+                f"groundtruth_topic is {diagnostics.get('groundtruth_topic')!r}, expected {self.groundtruth_topic!r}"
+            )
+        if diagnostics.get("rgb_groundtruth_overlap_ns") is None:
+            issues.append("missing RGB/groundtruth timestamp overlap")
+        if diagnostics.get("extraction_fingerprint") != self._extraction_fingerprint(sequence_name):
+            issues.append("extraction fingerprint does not match current settings")
+        if int(diagnostics.get("image_count") or 0) <= 0:
+            issues.append("image_count must be positive")
+        if int(diagnostics.get("groundtruth_count") or 0) <= 0:
+            issues.append("groundtruth_count must be positive")
+        return issues
 
     def _update_diagnostics(self, sequence_name: str, values: dict[str, Any]) -> None:
         diagnostics_path = self._diagnostics_path(sequence_name)
@@ -523,8 +815,23 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         if not rgb_path.is_dir():
             return []
         return sorted(
-            p for p in rgb_path.iterdir()
-            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}
+            (
+                p for p in rgb_path.iterdir()
+                if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}
+            ),
+            key=BACCHUS_dataset._timestamp_from_image_name,
+        )
+
+    @staticmethod
+    def _depth_image_paths(depth_path: Path) -> list[Path]:
+        if not depth_path.is_dir():
+            return []
+        return sorted(
+            (
+                p for p in depth_path.iterdir()
+                if p.is_file() and p.suffix.lower() == ".png"
+            ),
+            key=BACCHUS_dataset._timestamp_from_image_name,
         )
 
     @staticmethod
@@ -535,6 +842,26 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             raise ValueError(
                 f"BACCHUS RGB image filenames must be nanosecond timestamps: {image_path.name}"
             ) from exc
+
+    @classmethod
+    def _nearest_rgb_depth_pairs(
+        cls,
+        image_paths: list[Path],
+        depth_paths: list[Path],
+    ) -> list[tuple[Path, Path]]:
+        depth_timestamps = [cls._timestamp_from_image_name(path) for path in depth_paths]
+        pairs: list[tuple[Path, Path]] = []
+        depth_index = 0
+        for image_path in image_paths:
+            image_timestamp = cls._timestamp_from_image_name(image_path)
+            while (
+                depth_index + 1 < len(depth_timestamps)
+                and abs(depth_timestamps[depth_index + 1] - image_timestamp)
+                <= abs(depth_timestamps[depth_index] - image_timestamp)
+            ):
+                depth_index += 1
+            pairs.append((image_path, depth_paths[depth_index]))
+        return pairs
 
     @classmethod
     def _extract_rgb_images(
@@ -585,37 +912,95 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             "max_seconds": max_seconds,
         }
 
+    @classmethod
+    def _extract_depth_images(
+        cls,
+        bag_path: Path,
+        depth_topics: list[str],
+        output_path: Path,
+        max_frames: int = 0,
+        max_seconds: float = 0.0,
+    ) -> dict[str, Any]:
+        written = 0
+        first_timestamp_ns: int | None = None
+        last_timestamp_ns: int | None = None
+        selected_topic: str | None = None
+        for selected_topic, msgtype, timestamp_ns, msg in cls._iter_image_messages(
+            bag_path,
+            depth_topics,
+        ):
+            if first_timestamp_ns is None:
+                first_timestamp_ns = timestamp_ns
+            if max_seconds > 0 and (timestamp_ns - first_timestamp_ns) / 1e9 >= max_seconds:
+                break
+            cls._write_depth_message(
+                output_path=output_path,
+                timestamp_ns=timestamp_ns,
+                msgtype=msgtype,
+                msg=msg,
+            )
+            written += 1
+            last_timestamp_ns = timestamp_ns
+            if max_frames > 0 and written >= max_frames:
+                break
+
+        if written == 0:
+            raise RuntimeError(f"No depth images extracted from {bag_path}:{depth_topics}")
+
+        duration_s = 0.0
+        if first_timestamp_ns is not None and last_timestamp_ns is not None:
+            duration_s = (last_timestamp_ns - first_timestamp_ns) / 1e9
+        fps = written / duration_s if duration_s > 0 else 0.0
+        return {
+            "depth_topic": selected_topic,
+            "depth_count": written,
+            "depth_time_bounds_ns": [first_timestamp_ns, last_timestamp_ns],
+            "depth_duration_s": duration_s,
+            "depth_inferred_fps": fps,
+            "max_frames": max_frames,
+            "max_seconds": max_seconds,
+        }
+
     @staticmethod
     def _iter_image_messages(
         bag_path: Path,
         image_topics: list[str],
     ):
-        try:
-            from rosbags.highlevel import AnyReader
-        except ImportError as exc:
-            raise RuntimeError(
-                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
-            ) from exc
-
-        with AnyReader([bag_path]) as reader:
-            connections = []
-            selected_topic = None
-            for image_topic in image_topics:
-                connections = [c for c in reader.connections if c.topic == image_topic]
-                if connections:
-                    selected_topic = image_topic
-                    break
-
-            if not connections:
-                topics = ", ".join(sorted({c.topic for c in reader.connections}))
-                raise ValueError(
-                    f"Image topics {image_topics} not found in {bag_path}. Available topics: {topics}"
-                )
+        with BACCHUS_dataset._open_fast_ros1_stream(bag_path) as reader:
+            available_topics = [c.topic for c in reader.connections]
+            selected_topic = BACCHUS_dataset._select_first_available_topic(
+                image_topics,
+                available_topics,
+                label="Image",
+                bag_path=bag_path,
+            )
+            connections = [c for c in reader.connections if c.topic == selected_topic]
 
             messages = reader.messages(connections=connections)
             for connection, timestamp_ns, rawdata in tqdm(messages, desc=f"Extracting {selected_topic}"):
                 msg = reader.deserialize(rawdata, connection.msgtype)
                 yield selected_topic, connection.msgtype, timestamp_ns, msg
+
+    @staticmethod
+    def _select_first_available_topic(
+        preferred_topics: list[str],
+        available_topics: list[str],
+        label: str,
+        bag_path: Path,
+    ) -> str:
+        available = set(available_topics)
+        for topic in preferred_topics:
+            if topic in available:
+                return topic
+        topics = ", ".join(sorted(available_topics))
+        raise ValueError(
+            f"{label} topics {preferred_topics} not found in {bag_path}. "
+            f"Available topics: {topics}"
+        )
+
+    @staticmethod
+    def _open_fast_ros1_stream(bag_path: Path):
+        return _FastRosbag1Stream(bag_path)
 
     @classmethod
     def _groundtruth_rows_from_odometry_messages(
@@ -938,25 +1323,72 @@ class BACCHUS_dataset(DatasetVSLAMLab):
         msgtype: str,
         msg: Any,
     ) -> Path:
-        if msgtype.endswith("/CompressedImage"):
-            payload = bytes(msg.data)
-            format_hint = str(getattr(msg, "format", "") or "").lower()
-            if "jpeg" in format_hint or "jpg" in format_hint or payload.startswith(b"\xff\xd8"):
-                image_path = output_path / f"{timestamp_ns}.jpg"
-                image_path.write_bytes(payload)
-                return image_path
-            if "png" in format_hint or payload.startswith(b"\x89PNG\r\n\x1a\n"):
-                image_path = output_path / f"{timestamp_ns}.png"
-                image_path.write_bytes(payload)
-                return image_path
-
         image = BACCHUS_dataset._message_to_bgr_image(msgtype, msg)
         image_path = output_path / f"{timestamp_ns}.png"
-        cv2.imwrite(str(image_path), image)
+        import cv2
+
+        if not cv2.imwrite(str(image_path), image):
+            raise RuntimeError(f"Could not write BACCHUS RGB image: {image_path}")
         return image_path
 
     @staticmethod
+    def _write_depth_message(
+        output_path: Path,
+        timestamp_ns: int,
+        msgtype: str,
+        msg: Any,
+    ) -> Path:
+        depth = BACCHUS_dataset._message_to_depth_image(msgtype, msg)
+        image_path = output_path / f"{timestamp_ns}.png"
+        import cv2
+
+        if not cv2.imwrite(str(image_path), depth):
+            raise RuntimeError(f"Could not write BACCHUS depth image: {image_path}")
+        return image_path
+
+    @staticmethod
+    def _message_to_depth_image(msgtype: str, msg: Any) -> np.ndarray:
+        if msgtype.endswith("/CompressedImage"):
+            return BACCHUS_dataset._decode_compressed_depth_image(msg)
+
+        if not msgtype.endswith("/Image"):
+            raise TypeError(f"Unsupported BACCHUS depth image message type: {msgtype}")
+
+        height = int(msg.height)
+        width = int(msg.width)
+        encoding = str(msg.encoding).lower()
+        raw = bytes(msg.data)
+
+        if encoding in {"16uc1", "mono16"}:
+            return np.frombuffer(raw, dtype=np.uint16).reshape((height, width))
+        if encoding == "32fc1":
+            depth_m = np.frombuffer(raw, dtype=np.float32).reshape((height, width))
+            return np.nan_to_num(depth_m * 1000.0, nan=0.0, posinf=0.0, neginf=0.0).astype(np.uint16)
+
+        raise ValueError(f"Unsupported BACCHUS depth image encoding: {msg.encoding}")
+
+    @staticmethod
+    def _decode_compressed_depth_image(msg: Any) -> np.ndarray:
+        import cv2
+
+        payload = bytes(msg.data)
+        format_hint = str(getattr(msg, "format", "") or "").lower()
+        candidates = [payload]
+        if "compresseddepth" in format_hint and len(payload) > 12:
+            candidates.insert(0, payload[12:])
+
+        for candidate in candidates:
+            data = np.frombuffer(candidate, dtype=np.uint8)
+            depth = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
+            if depth is not None:
+                return depth
+
+        raise ValueError("Could not decode BACCHUS compressedDepth image message")
+
+    @staticmethod
     def _message_to_bgr_image(msgtype: str, msg: Any) -> np.ndarray:
+        import cv2
+
         if msgtype.endswith("/CompressedImage"):
             data = np.frombuffer(bytes(msg.data), dtype=np.uint8)
             image = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -988,3 +1420,124 @@ class BACCHUS_dataset(DatasetVSLAMLab):
             return cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
 
         raise ValueError(f"Unsupported BACCHUS image encoding: {msg.encoding}")
+
+
+class _FastRosbag1Stream:
+    """ROS1 stream reader that skips the expensive per-message index load."""
+
+    def __init__(self, bag_path: Path) -> None:
+        self.bag_path = Path(bag_path)
+        self.reader = None
+        self.typestore = None
+        self.connections = []
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
+        return False
+
+    def open(self) -> None:
+        try:
+            from rosbags.interfaces import MessageDefinitionFormat
+            from rosbags.rosbag1.reader import Header, Reader, ReaderError, RecordType
+            from rosbags.typesys import Stores, get_types_from_idl, get_types_from_msg, get_typestore
+        except ImportError as exc:
+            raise RuntimeError(
+                "The BACCHUS dataset requires the 'rosbags' Python package to read source bags."
+            ) from exc
+
+        reader = Reader(self.bag_path)
+        try:
+            reader.bio = self.bag_path.open("rb")
+            magic = reader.bio.readline().decode()
+            if not magic:
+                raise ReaderError(f"File {str(self.bag_path)!r} seems to be empty.")
+            matches = re.match(r"#ROSBAG V(\d+).(\d+)\n", magic)
+            if not matches:
+                raise ReaderError("File magic is invalid.")
+            major, minor = matches.groups()
+            version = int(major) * 100 + int(minor)
+            if version != 200:
+                raise ReaderError(f"Bag version {version!r} is not supported.")
+
+            header = Header.read(reader.bio, RecordType.BAGHEADER)
+            index_pos = header.get_uint64("index_pos")
+            conn_count = header.get_uint32("conn_count")
+            chunk_count = header.get_uint32("chunk_count")
+            if index_pos == 0:
+                raise ReaderError("Bag is not indexed, reindex before reading.")
+            if chunk_count == 0:
+                self.reader = reader
+                self.connections = []
+                self.typestore = get_typestore(Stores.EMPTY)
+                return
+
+            reader.bio.seek(index_pos)
+            reader.connections = [reader.read_connection() for _ in range(conn_count)]
+            reader.chunk_infos = [reader.read_chunk_info() for _ in range(chunk_count)]
+            self.reader = reader
+            self.connections = reader.connections
+
+            typestore = get_typestore(Stores.EMPTY)
+            typs = {}
+            sep = "=" * 80 + "\n"
+            for connection in self.connections:
+                if connection.msgdef.format == MessageDefinitionFormat.NONE:
+                    continue
+                if connection.msgdef.data.startswith(f"{sep}IDL: "):
+                    for msgdef in connection.msgdef.data.split(sep)[1:]:
+                        hdr, idl = msgdef.split("\n", 1)
+                        if hdr.startswith("IDL: "):
+                            typs.update(get_types_from_idl(idl))
+                else:
+                    typs.update(get_types_from_msg(connection.msgdef.data, connection.msgtype))
+            typestore.register(typs)
+            self.typestore = typestore
+        except Exception:
+            reader.close()
+            raise
+
+    def close(self) -> None:
+        if self.reader is not None and self.reader.bio is not None:
+            self.reader.close()
+
+    def deserialize(self, rawdata: bytes, msgtype: str) -> object:
+        if self.typestore is None:
+            raise RuntimeError("BACCHUS fast ROS1 stream is not open")
+        return self.typestore.deserialize_ros1(rawdata, msgtype)
+
+    def messages(self, connections):
+        if self.reader is None or self.reader.bio is None:
+            raise RuntimeError("BACCHUS fast ROS1 stream is not open")
+        from rosbags.rosbag1.reader import Header, RecordType, read_bytes, read_uint32
+
+        selected_ids = {connection.id for connection in connections}
+        connection_by_id = {connection.id: connection for connection in self.connections}
+        for chunk_info in self.reader.chunk_infos:
+            if selected_ids and not selected_ids.intersection(chunk_info.connection_counts):
+                continue
+            self.reader.bio.seek(chunk_info.pos)
+            chunk_header = self.reader.read_chunk()
+            self.reader.bio.seek(chunk_header.datapos)
+            rawbytes = chunk_header.decompressor(
+                read_bytes(self.reader.bio, chunk_header.datasize)
+            )
+            chunk = BytesIO(rawbytes)
+            while chunk.tell() < len(rawbytes):
+                header = Header.read(chunk)
+                op = header.get_uint8("op")
+                if op == RecordType.CONNECTION:
+                    chunk.seek(read_uint32(chunk), os.SEEK_CUR)
+                    continue
+                if op != RecordType.MSGDATA:
+                    chunk.seek(read_uint32(chunk), os.SEEK_CUR)
+                    continue
+
+                data = read_bytes(chunk, read_uint32(chunk))
+                conn_id = header.get_uint32("conn")
+                if selected_ids and conn_id not in selected_ids:
+                    continue
+                yield connection_by_id[conn_id], header.get_time("time"), data
