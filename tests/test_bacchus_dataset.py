@@ -2,10 +2,49 @@ import csv
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from Datasets.dataset_files.dataset_bacchus import BACCHUS_dataset
 from Datasets.get_dataset import get_dataset, list_available_datasets
+
+
+def _vector(x=0.0, y=0.0, z=0.0):
+    return SimpleNamespace(x=x, y=y, z=z)
+
+
+def _quaternion(x=0.0, y=0.0, z=0.0, w=1.0):
+    return SimpleNamespace(x=x, y=y, z=z, w=w)
+
+
+def _header(frame_id):
+    return SimpleNamespace(frame_id=frame_id)
+
+
+def _pose(position=(0.0, 0.0, 0.0), orientation=(0.0, 0.0, 0.0, 1.0)):
+    return SimpleNamespace(
+        position=_vector(*position),
+        orientation=_quaternion(*orientation),
+    )
+
+
+def _odometry(frame_id, child_frame_id, position, orientation=(0.0, 0.0, 0.0, 1.0)):
+    return SimpleNamespace(
+        header=_header(frame_id),
+        child_frame_id=child_frame_id,
+        pose=SimpleNamespace(pose=_pose(position, orientation)),
+    )
+
+
+def _transform(parent_frame, child_frame, translation, rotation=(0.0, 0.0, 0.0, 1.0)):
+    return SimpleNamespace(
+        header=_header(parent_frame),
+        child_frame_id=child_frame,
+        transform=SimpleNamespace(
+            translation=_vector(*translation),
+            rotation=_quaternion(*rotation),
+        ),
+    )
 
 
 def test_bacchus_dataset_is_registered(tmp_path):
@@ -38,6 +77,80 @@ def test_bacchus_uses_ros_compressed_transport_launch_defaults(tmp_path):
         "/front/zed_node/rgb/image_rect_color/compressed",
         "/front/zed_node/rgb/image_rect_color",
     ]
+    assert dataset.groundtruth_topic == "/odometry/gps"
+    assert dataset.groundtruth_frame_source == "tf"
+    assert dataset.tf_topics == ["/tf_static", "/tf"]
+
+
+def test_bacchus_groundtruth_and_camera_frame_env_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACCHUS_GROUNDTRUTH_TOPIC", "/custom/rtk")
+    monkeypatch.setenv("BACCHUS_CAMERA_FRAME", "front_camera_optical")
+
+    dataset = get_dataset("bacchus", tmp_path)
+
+    assert dataset.groundtruth_topic == "/custom/rtk"
+    assert dataset.camera_frame == "front_camera_optical"
+
+
+def test_bacchus_writes_groundtruth_csv_from_odometry(tmp_path):
+    dataset = get_dataset("bacchus", tmp_path)
+    sequence_path = dataset.dataset_path / "ktima_2022_06_08"
+    sequence_path.mkdir(parents=True)
+    odom = _odometry("odom", "gps", (1.0, 2.0, 3.0))
+
+    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+        [(1654690000000000000, odom)],
+        tf_edges={},
+        target_frame="gps",
+    )
+    dataset._write_groundtruth_csv("ktima_2022_06_08", rows)
+
+    with open(sequence_path / "groundtruth.csv", newline="", encoding="utf-8") as f:
+        csv_rows = list(csv.DictReader(f))
+
+    assert csv_rows == [
+        {
+            "ts (ns)": "1654690000000000000",
+            "tx (m)": "1",
+            "ty (m)": "2",
+            "tz (m)": "3",
+            "qx": "0",
+            "qy": "0",
+            "qz": "0",
+            "qw": "1",
+        }
+    ]
+
+
+def test_bacchus_applies_tf_chain_from_gps_to_camera_frame():
+    odom = _odometry("odom", "gps", (10.0, 0.0, 0.0))
+    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+        [_transform("gps", "front_camera", (1.0, 2.0, 3.0))]
+    )
+
+    rows = BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+        [(1654690000000000000, odom)],
+        tf_edges=tf_edges,
+        target_frame="front_camera",
+    )
+
+    assert rows[0][0] == 1654690000000000000
+    np.testing.assert_allclose(rows[0][1:4], [11.0, 2.0, 3.0])
+    np.testing.assert_allclose(rows[0][4:8], [0.0, 0.0, 0.0, 1.0])
+
+
+def test_bacchus_missing_tf_chain_names_frames_in_error():
+    odom = _odometry("odom", "gps", (10.0, 0.0, 0.0))
+    tf_edges = BACCHUS_dataset._tf_edges_from_transforms(
+        [_transform("map", "base_link", (1.0, 2.0, 3.0))]
+    )
+
+    with pytest.raises(ValueError, match="gps.*front_camera.*available frames.*base_link.*map"):
+        BACCHUS_dataset._groundtruth_rows_from_odometry_messages(
+            [(1654690000000000000, odom)],
+            tf_edges=tf_edges,
+            target_frame="front_camera",
+        )
 
 
 def test_bacchus_decodes_compressed_image_messages():

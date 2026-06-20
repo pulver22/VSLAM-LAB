@@ -1,5 +1,5 @@
-exp_bacchus_droidslam:
+exp_bacchus_dpvo:
   Config: config_bacchus.yaml
   NumRuns: 1
-  Parameters: {mode: mono, max_rgb: 200}
-  Module: droidslam
+  Parameters: {mode: mono, max_rgb: 200, verbose: 0}
+  Module: dpvo
