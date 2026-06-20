@@ -36,6 +36,10 @@ class RGBDTUM_dataset(DatasetVSLAMLab):
 
         # Sequence nicknames
         self.sequence_nicknames = [self._nickname(s) for s in self.sequence_names]
+        self.sequence_nicknames = [s.replace('near', 'n') for s in self.sequence_nicknames]
+        self.sequence_nicknames = [s.replace('far', 'f') for s in self.sequence_nicknames]
+        self.sequence_nicknames = [s.replace('with person', 'wp') for s in self.sequence_nicknames]
+        self.sequence_nicknames = [s.replace('long office household', 'office') for s in self.sequence_nicknames]
 
         # Depth factor
         self.depth_factor = cfg["depth_factor"]

@@ -34,6 +34,18 @@ max_seconds: 0
 allow_placeholder_calibration_env: BLT_ALLOW_PLACEHOLDER_CALIBRATION
 calibration_file: dataset_blt_calibration.yaml
 
+about:
+  license: Local data only; raw BLT rosbags are not redistributed by this integration.
+  summary: BLT ktima 2022 vineyard rosbag sequences converted to VSLAM-LAB mono format with RTK-derived ground truth.
+  homepage: https://github.com/pulver22/VSLAM-LAB
+  authors:
+    - BLT dataset contributors
+
+vslamlab_maintainer:
+  name: Pulver
+  email: ""
+  date: 2026-06-20
+
 sequence_names:
   - ktima_2022_03
   - ktima_2022_04

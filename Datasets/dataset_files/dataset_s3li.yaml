@@ -5,7 +5,7 @@ imu_hz: 200.0
 modes: ['mono', 'stereo', 'mono-vi', 'stereo-vi']
 cam_models: ['pinhole']
 
-url_download_sequences: 
+url_download_sequences:
   # S3LI Vulcano sequences
   vegetation: "https://my.hidrive.com/api/sharelink/download?id=I9ygsv4d9"
   waterfront: "https://my.hidrive.com/api/sharelink/download?id=QsjbHlubU"
@@ -54,3 +54,17 @@ sequence_nicknames:
   - mapping
   - traverse_1
   - traverse_2
+
+about:
+  license: License
+  summary: The S3LI Vulcano Dataset A Dataset for Multi-Modal SLAM in Unstructured Planetary Environments
+  homepage: https://www.dlr.de/en/rm/research/publications-and-downloads/datasets/s3li-datasets
+  authors:
+    - Riccardo Giubilato
+    - Marcus Gerhard Müller
+    - Others
+
+vslamlab_maintainer:
+  name: Alejandro Fontan
+  email: alejandro.fontan@qut.edu.au
+  date: 2026-03-07

@@ -2,7 +2,7 @@ dataset_name: sesoko
 
 rgb_hz: 30.0
 url_download_root: "https://squidle.org"
-api_token: ""
+api_token: "54198b8ada2f96907e257016c2b31796d333e3e566ed07a80a61e93f"
 modes: ['mono']
 cam_models: ['pinhole']
 target_resolution: [640, 480]
@@ -15,13 +15,42 @@ sequence_names:
   - ssk17-s01
   - ssk18-s01
   - sskall-s01
+  - ssk16-s03
+  - ssk17-s03
+  - ssk18-s03
+  - sskall-s03
+  - ssk16-s05
+  - ssk17-s05
+  - ssk18-s05
+  - sskall-s05
+  - ssk16-s15
+  - ssk17-s15
+  - ssk18-s15
+  - sskall-s15
+  - ssk16-s30
+  - ssk17-s30
+  - ssk18-s30
+  - sskall-s30
 
 subsets:
-  # ssk16-s01: [ssk16, "rgb_0/8310516.jpg", 2.5] # parent sequence, target image path, radius in meters
-  # ssk17-s01: [ssk17, "rgb_0/8312848.jpg", 2.5]
-  # ssk18-s01: [ssk18, "rgb_0/8316204.jpg", 2.5]
   ssk16-s01: [ssk16, "rgb_0/8312297.jpg", 1.0] # parent sequence, target image path, radius in meters
   ssk17-s01: [ssk17, "rgb_0/8315088.jpg", 1.0]
   ssk18-s01: [ssk18, "rgb_0/8318071.jpg", 1.0]
+  ssk16-s03: [ssk16, "rgb_0/8312297.jpg", 3.0]
+  ssk17-s03: [ssk17, "rgb_0/8315088.jpg", 3.0]
+  ssk18-s03: [ssk18, "rgb_0/8318071.jpg", 3.0]
+  ssk16-s05: [ssk16, "rgb_0/8312297.jpg", 5.0]
+  ssk17-s05: [ssk17, "rgb_0/8315088.jpg", 5.0]
+  ssk18-s05: [ssk18, "rgb_0/8318071.jpg", 5.0]
+  ssk16-s15: [ssk16, "rgb_0/8312297.jpg", 15.0]
+  ssk17-s15: [ssk17, "rgb_0/8315088.jpg", 15.0]
+  ssk18-s15: [ssk18, "rgb_0/8318071.jpg", 15.0]
+  ssk16-s30: [ssk16, "rgb_0/8312297.jpg", 30.0]
+  ssk17-s30: [ssk17, "rgb_0/8315088.jpg", 30.0]
+  ssk18-s30: [ssk18, "rgb_0/8318071.jpg", 30.0]
 combined:
   sskall-s01: [ssk16-s01, ssk17-s01, ssk18-s01]
+  sskall-s03: [ssk16-s03, ssk17-s03, ssk18-s03]
+  sskall-s05: [ssk16-s05, ssk17-s05, ssk18-s05]
+  sskall-s15: [ssk16-s15, ssk17-s15, ssk18-s15]
+  sskall-s30: [ssk16-s30, ssk17-s30, ssk18-s30]

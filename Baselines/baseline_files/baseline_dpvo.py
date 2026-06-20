@@ -16,7 +16,7 @@ class DPVO_baseline(BaselineVSLAMLab):
     def __init__(self, baseline_name: str = 'dpvo', baseline_folder: str = 'DPVO') -> None:
 
         default_parameters = {'verbose': 1, 'mode': 'mono',
-                              'network': f'{VSLAMLAB_BASELINES / baseline_folder / 'dpvo.pth'}'}
+                              'network': f"{VSLAMLAB_BASELINES / baseline_folder / 'dpvo.pth'}"}
         
         # Initialize the baseline
         super().__init__(baseline_name, baseline_folder, default_parameters)

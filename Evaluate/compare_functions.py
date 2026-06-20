@@ -7,7 +7,7 @@ from Evaluate import plot_functions
 from Datasets.get_dataset import get_dataset
 from path_constants import VSLAM_LAB_EVALUATION_FOLDER
 from utilities import find_common_sequences, read_csv
-
+from Evaluate import latex_functions
 SCRIPT_LABEL = "[compare_functions.py] "
 VSLAM_LAB_ACCURACY_CSV = 'ate.csv'
 
@@ -21,7 +21,7 @@ def full_comparison(experiments, VSLAMLAB_BENCHMARK, COMPARISONS_YAML_DEFAULT, c
 
     dataset_sequences, dataset_nicknames, dataset_rgbHz, exp_names, sequence_nicknames = get_experiments(experiments)
     accuracies = get_accuracies(experiments, dataset_sequences)
-   
+    
     # Comparisons switch
     def switch_comparison(comparison_):
         switcher = {
@@ -39,6 +39,8 @@ def full_comparison(experiments, VSLAMLAB_BENCHMARK, COMPARISONS_YAML_DEFAULT, c
             'num_tracked_frames': lambda: plot_functions.num_tracked_frames(accuracies, dataset_sequences, figures_path, experiments),
             'running_time': lambda: plot_functions.running_time(figures_path, experiments, sequence_nicknames),
             'memory': lambda: plot_functions.plot_memory(figures_path, experiments, sequence_nicknames),
+            'latex_tables': lambda: latex_functions.generate_latex_tables(accuracies, dataset_sequences,
+                                                                       'rmse', figures_path, experiments)
         }
 
         func = switcher.get(comparison_, lambda: "Invalid case")

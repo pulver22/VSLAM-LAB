@@ -1,0 +1,6 @@
+exp_rss_ssk_30:
+  Config: test_config_rss_ssk_30.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0}
+  Module: glomap
+

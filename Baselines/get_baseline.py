@@ -33,8 +33,8 @@ from Baselines.baseline_files.baseline_glomap import GLOMAP_baseline
 from Baselines.baseline_files.baseline_vggt import VGGT_baseline
 
 # Development
-from Baselines.baseline_gensfm import GENSFM_baseline_dev
-from Baselines.baseline_mast3r import MAST3R_baseline_dev
+from Baselines.baseline_files.baseline_allfeature import ALLFEATURE_baseline
+from Baselines.baseline_files.baseline_allfeature import ALLFEATURE_baseline_dev
 
 def get_baseline_switcher():
     return {
@@ -63,8 +63,8 @@ def get_baseline_switcher():
         "vggtslam-dev": lambda: VGGTSLAM_baseline_dev(),
         
         # Development
-        "gensfm-dev": lambda: GENSFM_baseline_dev(),
-        "mast3r-dev": lambda: MAST3R_baseline_dev(),  
+        "allfeature": lambda: ALLFEATURE_baseline(),  
+        "allfeature-dev": lambda: ALLFEATURE_baseline_dev(),
     }
 
 def get_baseline(baseline_name):

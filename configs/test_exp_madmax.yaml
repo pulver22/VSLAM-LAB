@@ -1,0 +1,11 @@
+exp_madmax_orbslam3:
+  Config: test_config_madmax.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0, mode: stereo}
+  Module: orbslam3
+
+exp_madmax_droidslam:
+  Config: test_config_madmax.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0, mode: stereo}
+  Module: droidslam

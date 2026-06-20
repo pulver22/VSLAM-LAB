@@ -195,21 +195,20 @@ def run_exp(exp_yaml: str | Path) -> None:
             duration_time_total += duration_time
             num_executed_runs += 1
             remaining_iterations -= 1
-
-            exp_log["STATUS"] = exp_log["STATUS"].astype(str)
-            exp_log["SUCCESS"] = exp_log["SUCCESS"].astype(str)
-            exp_log["COMMENTS"] = exp_log["COMMENTS"].astype(str)
-            exp_log.loc[first_not_finished_experiment, "STATUS"] = "completed"
-            exp_log.loc[first_not_finished_experiment, "SUCCESS"] = results['success']
-            exp_log.loc[first_not_finished_experiment, "COMMENTS"] = results['comments']
+            exp_log["STATUS"] = exp_log["STATUS"].astype("string")
+            exp_log["SUCCESS"] = exp_log["SUCCESS"].astype("string")
+            exp_log["COMMENTS"] = exp_log["COMMENTS"].astype("string")
+            exp_log.loc[first_not_finished_experiment, "STATUS"] = str("completed")
+            exp_log.loc[first_not_finished_experiment, "SUCCESS"] = str(results['success'])
+            exp_log.loc[first_not_finished_experiment, "COMMENTS"] = str(results['comments'])
             exp_log.loc[first_not_finished_experiment, "TIME"] = duration_time
             exp_log.loc[first_not_finished_experiment, "RAM"] = results['ram']
             exp_log.loc[first_not_finished_experiment, "SWAP"] = results['swap']
             exp_log.loc[first_not_finished_experiment, "GPU"] = results['gpu']
             exp_log.to_csv(exp.log_csv, index=False)
                 
-            all_experiments_completed[exp_name] = exp_log['STATUS'].eq("completed").all()
-        
+            all_experiments_completed[exp_name] = exp_log["STATUS"].eq("completed").fillna(False).all()
+
         if(duration_time_total > 1):
             print(f"\n{SCRIPT_LABEL}: Experiment report: {exp_yaml}")
             print(f"{ws(4)}\033[93mNumber of executed iterations: {num_executed_runs} / {num_executed_runs + remaining_iterations} \033[0m")
@@ -288,7 +287,7 @@ def check_experiment_state(exp_yaml: str | Path) -> None:
 
         executed_num_runs_exp = 0
         if exp_folder.exists() & exp_log_csv.exists():
-            exp_log = pd.read_csv(exp_log_csv)
+            exp_log = read_csv(exp_log_csv)
             executed_num_runs_exp += (exp_log["STATUS"] == "completed").sum()  
             executed_num_runs += executed_num_runs_exp
         
@@ -442,12 +441,12 @@ def update_experiment_csv_log(exp_name: str, settings: Any) -> bool:
 
     exp_folder = VSLAMLAB_EVALUATION / exp_name
     exp_log_csv = exp_folder / "vslamlab_exp_log.csv"
-    exp_log = pd.read_csv(exp_log_csv)
+    exp_log = read_csv(exp_log_csv)
 
     baseline_name = settings.get('Module')
     all_match = exp_log["method_name"].eq(baseline_name).all()
     if not all_match:
-        print_msg(f"{SCRIPT_LABEL}", f"The original method cannot be changed ({(exp_log["method_name"][0])} != {baseline_name}). Only new sequences or more runs can be added to the experiment.",'error')
+        print_msg(f"{SCRIPT_LABEL}", f"The original method cannot be changed ({(exp_log['method_name'][0])} != {baseline_name}). Only new sequences or more runs can be added to the experiment.",'error')
         exit(1)
 
     config_yaml = settings.get('Config')

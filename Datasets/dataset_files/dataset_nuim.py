@@ -30,7 +30,8 @@ class NUIM_dataset(DatasetVSLAMLab):
         # Sequence nicknames
         self.sequence_nicknames = [s.replace('_frei_png', '') for s in self.sequence_names]
         self.sequence_nicknames = [s.replace('_', ' ') for s in self.sequence_nicknames]
-
+        self.sequence_nicknames = [s.replace('living room', 'lr') for s in self.sequence_nicknames]
+        
         # Depth factor
         self.depth_factor = cfg["depth_factor"]
 

@@ -6,7 +6,12 @@ from path_constants import VSLAM_LAB_DIR
 
 # Monocular datasets
 from Datasets.dataset_files.dataset_tartanair import TARTANAIR_dataset
-from Datasets.dataset_files.dataset_squidle import SESOKO_dataset   
+from Datasets.dataset_files.dataset_squidle import SESOKO_dataset
+from Datasets.dataset_files.dataset_sweetcorals import SWEETCORALS_dataset
+from Datasets.dataset_files.dataset_monotum import MONOTUM_dataset
+from Datasets.dataset_files.dataset_hamlyn import HAMLYN_dataset
+from Datasets.dataset_files.dataset_scannetplusplus import SCANNETPLUSPLUS_dataset
+from Datasets.dataset_files.dataset_caves import CAVES_dataset
 
 # RGBD datasets
 from Datasets.dataset_files.dataset_eth import ETH_dataset
@@ -14,10 +19,12 @@ from Datasets.dataset_files.dataset_rgbdtum import RGBDTUM_dataset
 from Datasets.dataset_files.dataset_replica import REPLICA_dataset
 from Datasets.dataset_files.dataset_nuim import NUIM_dataset
 from Datasets.dataset_files.dataset_7scenes import SEVENSCENES_dataset
+from Datasets.dataset_files.dataset_drunkards import DRUNKARDS_dataset
 
 # Stereo datasets
 from Datasets.dataset_files.dataset_kitti import KITTI_dataset
 from Datasets.dataset_files.dataset_ut_coda import UT_CODA_dataset
+from Datasets.dataset_files.dataset_ariel import ARIEL_dataset
 
 # Stereo-VI datasets
 from Datasets.dataset_files.dataset_euroc import EUROC_dataset
@@ -29,26 +36,16 @@ from Datasets.dataset_files.dataset_msd import MSD_dataset
 from Datasets.dataset_files.dataset_openloris import OPENLORIS_d400_dataset
 from Datasets.dataset_files.dataset_openloris import OPENLORIS_t265_dataset
 from Datasets.dataset_files.dataset_blt import BLT_dataset
+from Datasets.dataset_files.dataset_hilti2022 import HILTI2022_dataset
+from Datasets.dataset_files.dataset_madmax import MADMAX_dataset
+from Datasets.dataset_files.dataset_hilti2026 import HILTI2026_dataset
+from Datasets.dataset_files.dataset_vitum import VITUM_dataset
 
 # Development
-from Datasets.dataset_vitum import VITUM_dataset
-from Datasets.dataset_scannetplusplus import SCANNETPLUSPLUS_dataset
-from Datasets.dataset_lizardisland import LIZARDISLAND_dataset
-from Datasets.dataset_ariel import ARIEL_dataset
-from Datasets.dataset_monotum import MONOTUM_dataset
-from Datasets.dataset_drunkards import DRUNKARDS_dataset
-from Datasets.dataset_hamlyn import HAMLYN_dataset
-from Datasets.dataset_caves import CAVES_dataset
-from Datasets.dataset_lamar import LAMAR_dataset
-from Datasets.dataset_eth3d_mvs_dslr import ETH3D_MVS_DSLR_dataset
-from Datasets.dataset_yandiwanba import YANDIWANBA_dataset
-from Datasets.dataset_antarctica import ANTARCTICA_dataset
-from Datasets.dataset_hilti2022 import HILTI2022_dataset
-from Datasets.dataset_madmax import MADMAX_dataset
-from Datasets.dataset_videos import VIDEOS_dataset
-from Datasets.dataset_sweetcorals import SWEETCORALS_dataset
-from Datasets.dataset_ntnu_arl_uw import NTNU_ARL_UW_dataset
-from Datasets.dataset_reefslam import REEFSLAM_dataset
+from Datasets.dataset_files.dataset_videos import VIDEOS_dataset
+from Datasets.dataset_files.dataset_iphone import IPHONE_dataset
+from Datasets.dataset_files.dataset_youtube import YOUTUBE_dataset
+from Datasets.dataset_files.dataset_strayscanner import StrayScanner_dataset
 
 SCRIPT_LABEL = f"\033[95m[{Path(__file__).name}]\033[0m "
 
@@ -74,26 +71,23 @@ def get_dataset(dataset_name, benchmark_path):
         "openloris-d400": lambda: OPENLORIS_d400_dataset(benchmark_path),
         "openloris-t265": lambda: OPENLORIS_t265_dataset(benchmark_path),
         "blt": lambda: BLT_dataset(benchmark_path),
-
-        # Development
-        "vitum": lambda: VITUM_dataset(benchmark_path),
-        "scannetplusplus": lambda: SCANNETPLUSPLUS_dataset(benchmark_path),
-        "lizardisland": lambda: LIZARDISLAND_dataset(benchmark_path),
-        "hamlyn": lambda: HAMLYN_dataset(benchmark_path),
-        "drunkards": lambda: DRUNKARDS_dataset(benchmark_path),
-        "ariel": lambda: ARIEL_dataset(benchmark_path),
+        "sweetcorals": lambda: SWEETCORALS_dataset(benchmark_path),
         "monotum": lambda: MONOTUM_dataset(benchmark_path),
-        "caves": lambda: CAVES_dataset(benchmark_path),
-        "lamar": lambda: LAMAR_dataset(benchmark_path),
-        "eth3d_mvs_dslr": lambda: ETH3D_MVS_DSLR_dataset(benchmark_path),
-        "yandiwanba": lambda: YANDIWANBA_dataset(benchmark_path),
-        "antarctica": lambda: ANTARCTICA_dataset(benchmark_path),
+        "ariel": lambda: ARIEL_dataset(benchmark_path),
         "hilti2022": lambda: HILTI2022_dataset(benchmark_path),
         "madmax": lambda: MADMAX_dataset(benchmark_path),
+        "hamlyn": lambda: HAMLYN_dataset(benchmark_path),
+        "hilti2026": lambda: HILTI2026_dataset(benchmark_path),
+        "drunkards": lambda: DRUNKARDS_dataset(benchmark_path),
+        "scannetplusplus": lambda: SCANNETPLUSPLUS_dataset(benchmark_path),
+        "caves": lambda: CAVES_dataset(benchmark_path),
+        "vitum": lambda: VITUM_dataset(benchmark_path),
+
+        # Development
         "videos": lambda: VIDEOS_dataset(benchmark_path),
-        "sweetcorals": lambda: SWEETCORALS_dataset(benchmark_path),
-        "ntnu_arl_uw": lambda: NTNU_ARL_UW_dataset(benchmark_path),
-        "reefslam": lambda: REEFSLAM_dataset(benchmark_path),
+        "iphone": lambda: IPHONE_dataset(benchmark_path),
+        "youtube": lambda: YOUTUBE_dataset(benchmark_path),
+        "strayscanner": lambda: StrayScanner_dataset(benchmark_path)
     }
 
     return switcher.get(dataset_name, lambda: "Invalid case")()

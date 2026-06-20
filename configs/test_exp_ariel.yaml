@@ -1,0 +1,5 @@
+exp_ariel_dvpo:
+  Config: test_config_ariel.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: mono, rgb_idx: [0,2000]}
+  Module: dpvo

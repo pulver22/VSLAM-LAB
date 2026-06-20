@@ -1,0 +1,41 @@
+test_exp_stereo_droidslam:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: droidslam
+
+test_exp_stereo_orbslam2:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: orbslam2
+
+test_exp_stereo_pycuvslam:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: pycuvslam
+
+test_exp_stereo_orbslam3:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: orbslam3
+
+test_exp_stereo_droidslam_dev:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: droidslam-dev
+
+test_exp_stereo_orbslam2_dev:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: orbslam2-dev
+
+test_exp_stereo_orbslam3_dev:
+  Config: test_config_stereo.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, rgb_idx: [0,250], mode: 'stereo'}
+  Module: orbslam3-dev

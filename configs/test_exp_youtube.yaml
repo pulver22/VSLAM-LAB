@@ -1,0 +1,17 @@
+exp_youtube_allfeature-dev:
+  Config: test_config_youtube.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: mono}
+  Module: allfeature-dev
+
+exp_youtube_droidslam:
+  Config: test_config_youtube.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: mono}
+  Module: droidslam
+
+exp_youtube_mast3rslam:
+  Config: test_config_youtube.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: mono}
+  Module: mast3rslam

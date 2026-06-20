@@ -1,0 +1,14 @@
+eth:
+  - 'table_3'
+rgbdtum:
+  - 'rgbd_dataset_freiburg1_xyz'
+replica:
+  - 'office0'
+nuim:
+  - 'traj0_frei_png'
+7scenes:
+  - 'chess_seq-01'
+openloris-d400:
+  - cafe1-1
+rover-d435i:
+  - 'campus_small_autumn_d435i'  

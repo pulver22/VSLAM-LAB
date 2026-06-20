@@ -1,0 +1,6 @@
+kitti:
+  - '04'
+euroc:
+  - 'MH_01_easy'
+ut-coda:
+  - '0'

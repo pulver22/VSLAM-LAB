@@ -1,0 +1,11 @@
+exp_strayscanner_orbslam3:
+  Config: test_config_strayscanner.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0, mode: mono}
+  Module: orbslam3
+
+exp_strayscanner_droidslam:
+  Config: test_config_strayscanner.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0, mode: mono}
+  Module: droidslam

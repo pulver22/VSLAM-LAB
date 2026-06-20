@@ -1,0 +1,5 @@
+exp_drunkards_orbslam3:
+  Config: test_config_drunkards.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: rgbd, rgb_idx: [0,2000]}
+  Module: orbslam3

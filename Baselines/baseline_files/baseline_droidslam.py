@@ -16,7 +16,7 @@ class DROIDSLAM_baseline(BaselineVSLAMLab):
     def __init__(self, baseline_name: str = 'droidslam', baseline_folder: str = 'DROID-SLAM') -> None:
 
         default_parameters = {'verbose': 1, 'mode': 'mono', 
-                              'upsample': 0, 'weights': f'{VSLAMLAB_BASELINES / baseline_folder / 'droid.pth'}'}
+                              'upsample': 0, 'weights': f"{VSLAMLAB_BASELINES / baseline_folder / 'droid.pth'}"}
         
         # Initialize the baseline
         super().__init__(baseline_name, baseline_folder, default_parameters)

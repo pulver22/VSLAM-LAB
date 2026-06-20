@@ -1,0 +1,28 @@
+dataset_name: youtube
+
+rgb_hz: 30.0
+modes: ['mono']
+cam_models: ['pinhole', 'radtan4']
+target_resolution: [640, 480]
+
+sequence_urls:
+  - "https://youtu.be/kcfs1-ryKWE"
+  - "https://youtu.be/kcfs1-ryKWE"
+
+sequence_names:
+  - fpv-drone-iceland-00
+  - fpv-drone-iceland-01
+
+time_windows:
+  - [2, 14]
+  - [24, 33]
+
+about:
+  license: License
+  summary: Youtube videos of VSLAM sequences.
+  description: This dataset contains a collection of Youtube videos that can be used for VSLAM
+
+vslamlab_maintainer:
+  name: Alejandro Fontan
+  email: alejandro.fontan@qut.edu.au
+  date: 2026-04-11

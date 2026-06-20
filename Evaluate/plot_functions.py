@@ -1,22 +1,3 @@
-"""
-Module: VSLAM-LAB - Compare - plot_functions.py
-- Author: Alejandro Fontan Villacampa
-- Version: 1.0
-- Created: 2024-07-04
-- Updated: 2024-07-04
-- License: GPLv3 License
-- List of Known Dependencies;
-    * ...
-
-This module provides functions for generating various types of plots to visualize experiment data across multiple datasets and sequences.
-
-Functions included:
-- boxplot_exp_seq: Generates box plots for different experiments and sequences within multiple datasets.
-- radar_seq: Creates a radar plot showing the relative performance across different sequences and datasets based on a specified metric.
-- plot_cum_error: Generates and saves cumulative error plots for different datasets, sequences, and experiments.
-- create_and_show_canvas: Creates a canvas of resized images and displays it.
-"""
-
 import glob
 import math
 import os
@@ -35,6 +16,7 @@ from sklearn.decomposition import PCA
 from path_constants import VSLAM_LAB_EVALUATION_FOLDER, VSLAMLAB_EVALUATION
 from Baselines.get_baseline import get_baseline
 from Datasets.get_dataset import get_dataset
+from utilities import read_csv
 
 import matplotlib.ticker as ticker
 from matplotlib.transforms import ScaledTranslation
@@ -45,10 +27,30 @@ colors_all = mcolors.CSS4_COLORS
 colors = list(colors_all.keys())
 random.shuffle(colors)
 
+import seaborn as sns
+import matplotlib as mpl
+
+# mpl.rcParams.update({
+#     "text.usetex": True,
+#     "font.family": "serif",
+#     "pdf.fonttype": 42,   # TrueType fonts
+#     "ps.fonttype": 42,
+# })
+
+# sns.set_theme(
+#     context="paper",
+#     style="whitegrid",
+#     font_scale=1.2  # Adjust slightly if needed to match caption text
+# )
+
 import logging
+
+from Evaluate.BenchmarkVSLAMLab import BenchmarkVSLAMLab as BM
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
+def robustMedian(arr):
+    return np.nanmedian(arr) if np.isfinite(arr).any() else np.nan
 
 def _trajectory_grid_shape(num_trajectories: int, max_cols: int = 4) -> tuple[int, int]:
     if num_trajectories <= 0:
@@ -57,30 +59,12 @@ def _trajectory_grid_shape(num_trajectories: int, max_cols: int = 4) -> tuple[in
     num_rows = math.ceil(num_trajectories / num_cols)
     return num_rows, num_cols
 
-
 def _read_tum_trajectory(tum_file: str) -> pd.DataFrame:
     traj = pd.read_csv(tum_file, sep=r"\s+", engine="python")
     if not {"tx", "ty", "tz"}.issubset(traj.columns):
         traj = pd.read_csv(tum_file, sep=r"\s+", header=None, engine="python")
         traj.columns = ["ts", "tx", "ty", "tz", "qx", "qy", "qz", "qw"][: len(traj.columns)]
     return traj
-
-
-def copy_axes_properties(source_ax, target_ax):
-    for line in source_ax.get_lines():
-        target_ax.plot(line.get_xdata(), line.get_ydata(), color=line.get_color(), linestyle=line.get_linestyle())
-
-    for patch in source_ax.patches:
-        new_patch = patch.__class__(xy=patch.get_xy(), width=patch.get_width(), height=patch.get_height(),
-                                    color=patch.get_facecolor())
-        target_ax.add_patch(new_patch)
-
-    target_ax.set_xlim(source_ax.get_xlim())
-    target_ax.set_ylim(source_ax.get_ylim())
-
-    target_ax.set_xticks(source_ax.get_xticks())
-    target_ax.set_xticklabels(source_ax.get_xticklabels())
-
 
 def plot_trajectories(dataset_sequences, exp_names, 
                       dataset_nicknames, experiments,
@@ -92,14 +76,12 @@ def plot_trajectories(dataset_sequences, exp_names,
     axs = axs.flatten()
 
     # Create legend handles
-    exp_colors = {
-        exp_name: plt.get_cmap("tab10")(i_exp % 10)
-        for i_exp, exp_name in enumerate(exp_names)
-    }
-    legend_handles = []
-    legend_handles.append(Patch(color='black', label='gt'))
+    exp_colors = {}
+    legend_handles = [Patch(color='black', label='gt')]
     for i_exp, exp_name in enumerate(exp_names):
-        legend_handles.append(Patch(color=exp_colors[exp_name], label=exp_name))
+        baseline = get_baseline(experiments[exp_name].module)
+        exp_colors[exp_name] = baseline.color
+        legend_handles.append(Patch(color=baseline.color, label=exp_names[i_exp]))
 
     i_traj = 0
     error_series = []
@@ -118,9 +100,10 @@ def plot_trajectories(dataset_sequences, exp_names,
                 if accuracies[dataset_name][sequence_name][exp_name].empty:
                     continue
 
+                accu = accuracies[dataset_name][sequence_name][exp_name]['rmse']
+                idx = accu.idxmin()
                 if not aligment_with_gt:                   
-                    accu = accuracies[dataset_name][sequence_name][exp_name]['rmse']
-                    idx = accu.idxmin()
+
                     gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{idx:05d}_gt.tum')
                     there_is_gt = False
                     if os.path.exists(gt_file):
@@ -248,6 +231,12 @@ def boxplot_exp_seq(values, dataset_sequences, metric_name, comparison_path, exp
         whisker_min_seq, whisker_max_seq = float('inf'), float('-inf')
         for i_exp, exp_name in enumerate(exp_names):
 
+            baseline = get_baseline(experiments[exp_name].module)
+            
+            median_ate = BM().get_median_ate(baseline.baseline_name, splts[sequence_name]['dataset_name'], sequence_name)
+            if median_ate > 0:
+                axs[splt['id']].axhline(y=median_ate, linestyle='--', linewidth=2, color=baseline.color, alpha=0.7, zorder=0)
+            
             values_seq_exp = values[splt['dataset_name']][sequence_name][exp_name]
             if values_seq_exp.empty:
                 continue
@@ -263,7 +252,9 @@ def boxplot_exp_seq(values, dataset_sequences, metric_name, comparison_path, exp
                 capprops=capprops, flierprops=flierprops)
             whisker_values = [line.get_ydata()[1] for line in boxplot_accuracy['whiskers']]
             whisker_min_seq = min(whisker_min_seq, min(whisker_values))
+            whisker_min_seq = min(whisker_min_seq, median_ate)
             whisker_max_seq = max(whisker_max_seq, max(whisker_values))
+            whisker_max_seq = max(whisker_max_seq, median_ate)
 
         width = max(0.1 * (whisker_max_seq - whisker_min_seq), 1e-6)
         if np.isinf(whisker_max_seq) or np.isinf(whisker_min_seq):
@@ -271,10 +262,6 @@ def boxplot_exp_seq(values, dataset_sequences, metric_name, comparison_path, exp
             whisker_max[sequence_name] = np.nan
             whisker_min[sequence_name] = np.nan
         else:
-            # if whisker_max_seq + width > 0.055 and ('56a0ec536c' in sequence_name) :
-            #     whisker_max[sequence_name] = 0.03
-            #     whisker_min[sequence_name] = 0.02
-            # else:
             whisker_max[sequence_name] = whisker_max_seq + width
             if(whisker_min_seq - width < 0):    
                 whisker_min[sequence_name] = whisker_min_seq / 2
@@ -283,6 +270,7 @@ def boxplot_exp_seq(values, dataset_sequences, metric_name, comparison_path, exp
                          
     # Adjust plot properties for paper
     max_value, min_value = max(whisker_max.values()), min(whisker_min.values())
+
 
     if shared_scale:
         whisker_max = {key: max_value for key in whisker_max}
@@ -357,57 +345,73 @@ def boxplot_exp_seq(values, dataset_sequences, metric_name, comparison_path, exp
     plt.show(block=False)
 
 def radar_seq(values, dataset_sequences, exp_names, dataset_nicknames, metric_name, comparison_path, experiments):
-    """
-     ------------ Description:
-    This function creates a radar plot showing the relative performance across different sequences and datasets.
-    The performance metric (e.g., accuracy) is normalized by the global median value for each sequence.
-
-    ------------ Parameters:
-    values : dict
-        values[dataset_name][sequence_name][exp_name] = pandas.DataFrame()
-    dataset_sequences : dict
-        dataset_sequences[dataset_name] = list{sequence_names}
-    exp_names : list
-        exp_names = list{exp_names}
-    dataset_nicknames : dict
-        dataset_nicknames[dataset_name] = list{sequence_nicknames}
-    metric_name : string
-        metric_name = "accuracy"
-    """
-
+    MAX_VALUE = 0.05
+    MIN_TRAJ_COVERAGE = 0.75
+    NORMALIZE_METRIC = False
+    TRAJ_UNIT = 100.0
+    SEC_VALUE = MAX_VALUE * 0.95
+    STEP_VALUE = MAX_VALUE / 5
+    
     # Create legend handles
     legend_handles = []
-    for i_exp, exp_name in enumerate(exp_names):
+    common = os.path.commonprefix(exp_names)
+    for exp_name in exp_names:
         baseline = get_baseline(experiments[exp_name].module)
-        legend_handles.append(Patch(color=baseline.color, label=exp_names[i_exp]), )
+        label = exp_name[len(common):].lstrip("_- /")
+        legend_handles.append(Patch(color=baseline.color, label=label))
 
-    fig, ax = plt.subplots(figsize=(8, 6), subplot_kw=dict(polar=True))
+    fig, ax = plt.subplots(figsize=(8, 8*1.05),subplot_kw=dict(polar=True), constrained_layout=False)
     all_sequence_names = []
-    medians = {}
+    
     median_sequence = {}
+    median_num_tracked_frames_sequence = {}
+    median_num_frames_sequence = {}
+    medians = {}
+    medians_num_tracked_frames = {}
+    medians_num_frames = {}
     for dataset_name, sequence_names in dataset_sequences.items():
         medians[dataset_name] = {}
+        medians_num_tracked_frames[dataset_name] = {}
+        medians_num_frames[dataset_name] = {}
+
         all_sequence_names.extend(dataset_nicknames[dataset_name])
         values_sequence = {}
         for sequence_name in sequence_names:
             medians[dataset_name][sequence_name] = {}
+            medians_num_tracked_frames[dataset_name][sequence_name] = {}
+            medians_num_frames[dataset_name][sequence_name] = {}
+
             values_sequence[sequence_name] = pd.Series([])
 
             for exp_name in exp_names:
                 values_dataset_sequence_exp = values[dataset_name][sequence_name][exp_name].copy()
-                if values_dataset_sequence_exp.empty:
-                    values_dataset_sequence_exp['rmse'] = pd.notna
+                data_empty = values_dataset_sequence_exp.empty
+                if data_empty:
+                    medians[dataset_name][sequence_name][exp_name] = np.nan                  
+                    medians_num_tracked_frames[dataset_name][sequence_name][exp_name] = np.nan   
+                    medians_num_frames[dataset_name][sequence_name][exp_name] = 0
+                else:
+                    medians[dataset_name][sequence_name][exp_name] = robustMedian(values_dataset_sequence_exp['rmse'])                  
+                    medians_num_tracked_frames[dataset_name][sequence_name][exp_name] = robustMedian(values_dataset_sequence_exp['num_tracked_frames'])   
+                    medians_num_frames[dataset_name][sequence_name][exp_name] = int(robustMedian(values_dataset_sequence_exp['num_frames'])) + 1
 
-                medians[dataset_name][sequence_name][exp_name] = np.median(values_dataset_sequence_exp['rmse'])    
-                
+                if data_empty:
+                    continue
+
                 if values_sequence[sequence_name].empty:
                     values_sequence[sequence_name] = values_dataset_sequence_exp['rmse']
                 else:
                     values_sequence[sequence_name] = pd.concat([values_sequence[sequence_name],
                                                                 values_dataset_sequence_exp['rmse']],
                                                                ignore_index=True)
+  
+            if values_sequence[sequence_name].empty:
+                median_sequence[sequence_name] = np.nan
+            else:
+                arr = values_sequence[sequence_name].to_numpy(dtype=float, na_value=np.nan)
+                median_sequence[sequence_name] = robustMedian(arr)
 
-            median_sequence[sequence_name] = np.min(values_sequence[sequence_name])
+            
 
     num_vars = len(all_sequence_names)
     iExp = 0
@@ -417,68 +421,121 @@ def radar_seq(values, dataset_sequences, exp_names, dataset_nicknames, metric_na
         y[experiment_name] = []
         for dataset_name, sequence_names in dataset_sequences.items():
             for sequence_name in sequence_names:
-                y[experiment_name].append(
-                    medians[dataset_name][sequence_name][experiment_name] / median_sequence[sequence_name])
+                num = medians_num_tracked_frames[dataset_name][sequence_name][experiment_name]
+                den = medians_num_frames[dataset_name][sequence_name][experiment_name]
 
-        #for i,yi in enumerate(y[experiment_name]): #INVERT ACCURACY
-        #y[experiment_name][i] = 1/yi
+                num = pd.to_numeric(num, errors="coerce")
+                den = pd.to_numeric(den, errors="coerce")
 
-        values_ = np.clip(y[experiment_name], 0, 3).tolist() 
+                if pd.isna(num) or pd.isna(den) or den == 0:
+                    perc_traj = np.nan 
+                else:
+                    perc_traj = float(num) / float(den)
+
+                if (perc_traj < MIN_TRAJ_COVERAGE):
+                    y[experiment_name].append(np.nan)
+                else:
+                    if NORMALIZE_METRIC:
+                        y[experiment_name].append(medians[dataset_name][sequence_name][experiment_name] / median_sequence[sequence_name])
+                    else:
+                        y[experiment_name].append(
+                            medians[dataset_name][sequence_name][experiment_name])
+ 
+        # for i,yi in enumerate(y[experiment_name]): #INVERT ACCURACY
+        #     y[experiment_name][i] = 1/yi
+
+        ##########################################################################
+        arr = pd.Series(y[experiment_name]).to_numpy(dtype=float, copy=True)
+        arr[arr > SEC_VALUE] = MAX_VALUE
+
+        values_ = arr.tolist()
         angles = np.linspace(0, 2 * pi, num_vars, endpoint=False).tolist()
 
         values_ += values_[:1]
         angles += angles[:1]
 
-        ax.plot(angles, values_, color=baseline.color, marker='o', linewidth=6)
-        ax.plot(np.linspace(0, 2 * np.pi, 100), [2.75] * 100, linestyle="dashed", color="red", linewidth=1)
-        ax.plot(np.linspace(0, 2 * np.pi, 100), [1.0] * 100, linestyle="dashed", color="lime", linewidth=1)
-        #ax.plot(np.linspace(0, 2 * np.pi, 100), [2.72] * 100, linestyle="dashed", color="green", linewidth=2)
-        ax.set_ylim(0, 3)
+        ax.plot(angles, values_, color=baseline.color, marker='.', linewidth=4, markersize=20, linestyle='solid',)
+
+        ax.plot(np.linspace(0, 2 * np.pi, 100), [SEC_VALUE] * 100, linestyle="dashed", color="red", linewidth=1)
+        ax.plot(np.linspace(0, 2 * np.pi, 100), [1.0] * 100, linestyle="dashed", color="lime", linewidth=2)
+        ax.set_ylim(0, MAX_VALUE)
         plt.xticks(angles[:-1], all_sequence_names)
-        #ax.set_xticklabels(all_sequence_names, fontsize=26)
 
 
-        #current_yticks = ax.get_yticks()
-        #new_yticks = current_yticks[:-1]  # Exclude the last tick
-        #ax.set_yticks(new_yticks)
-        #ax.set_yticklabels([str(tick) for tick in new_yticks], fontsize=12)
-        #ax.set_yticklabels(['', '', '', '',  '', ''], fontsize=24)   
-        yticks = [0, 1, 2, 3, 4, 5]   # choose whatever is appropriate
+        yticks = np.arange(STEP_VALUE, MAX_VALUE+STEP_VALUE, STEP_VALUE)  
+        if NORMALIZE_METRIC:
+            tick_labels = ['' for _ in yticks]
+        else:
+            tick_labels = [str(v*100) + " cm" for v in yticks] 
+
         ax.set_yticks(yticks)
-        ax.set_yticklabels(['', '', '', '', '', ''], fontsize=24)
+        ax.set_yticklabels(tick_labels, fontsize=24)
         
-        ax.tick_params(labelsize=30) 
-        ax.set_xticklabels(all_sequence_names, fontsize=30, fontweight="bold")
+        ax.set_xticks(angles[:-1], all_sequence_names)
+
+        ax.tick_params(labelsize=10) 
+        ax.tick_params(axis='x', pad=25)  
+
+        ax.set_xticklabels(all_sequence_names, fontsize=20, fontweight='bold')
+
+        ax.fill(angles, values_, color=baseline.color, alpha=0.15, zorder=2)
         iExp = iExp + 1
 
-    
+    ax.xaxis.grid(True, linestyle=(0, (1, 4)), linewidth=1.0, alpha=1)   # dot, gap
+    ax.yaxis.grid(True, linestyle=(0, (12, 6)), linewidth=0.8, alpha=1)  
+    ax.spines['polar'].set_linewidth(1.0)   # adjust thickness
+    ax.spines['polar'].set_alpha(1.0)
+    # optional: ensure it's above the bands
+    ax.spines['polar'].set_zorder(10)
+
+    # Add colored bands
+    rmax = MAX_VALUE        
+    ax.set_ylim(0, rmax)
+    #step = 0.5
+    edges = np.arange(0.0, rmax + STEP_VALUE, STEP_VALUE)
+    n_bands = len(edges) - 1
+
+    import matplotlib.cm as cm
+    cmap = cm.get_cmap("RdYlGn_r", n_bands)   # discrete (n_bands levels)
+
+    bands = []
+    for i, (r0, r1) in enumerate(zip(edges[:-1], edges[1:])):
+        color = cmap(i)  # i=0 is most inner band
+        bands.append((r0, r1, color))
+
+    for r0, r1, color in bands:
+        ax.bar(
+            x=0.0,
+            height=r1 - r0,
+            width=2*np.pi,
+            bottom=r0,
+            align="edge",
+            color=color,
+            alpha=0.33,
+            edgecolor="none",
+            zorder=0
+        )
+
+    ax.set_position([0.12, 0.0, 0.76, 0.76])  # [left, bottom, width, height]
+    ax.set_anchor('C')   
+
     plt.tight_layout()
     plot_name = os.path.join(comparison_path, f"{metric_name}_radar.pdf")
-    plt.savefig(plot_name, format='pdf')
+    #plt.savefig(plot_name, format='pdf')
+    fig.savefig(plot_name, format="pdf", bbox_inches="tight", pad_inches=0.35)
     plt.subplots_adjust(top=0.95, bottom=0.15)  # Adjust the top and bottom to make space for the legend
     fig.legend(handles=legend_handles, loc='lower center', ncol=len(legend_handles))
+#     fig.legend(
+#     handles=legend_handles,
+#     loc="lower center",
+#     bbox_to_anchor=(0.5, +0.08),   # (x, y) in figure coords; negative y pushes it below
+#     ncol=len(legend_handles),
+#     frameon=False
+# )
     plt.show(block=False)
 
 
 def plot_cum_error(values, dataset_sequences, exp_names, dataset_nicknames, metric_name, comparison_path, experiments):
-    """
-     ------------ Description:
-    This function generates and saves cumulative error plots for different datasets, sequences, and experiments.
-    It creates subplots for each sequence within a dataset and plots the cumulative error for each experiment.
-    The cumulative error is calculated as the number of values smaller than or equal to each data point.
-
-    ------------ Parameters:
-    values : dict
-        values[dataset_name][sequence_name][exp_name] = pandas.DataFrame()
-    dataset_sequences : dict
-        dataset_sequences[dataset_name] = list{sequence_names}
-    exp_names : list
-        exp_names = list{exp_names}
-    dataset_nicknames : dict
-        dataset_nicknames[dataset_name] = list{sequence_nicknames}
-    metric_name : string
-        metric_name = "accuracy"
-    """
     num_sequences = 0
     for dataset_name, sequence_names in dataset_sequences.items():
         num_sequences += len(sequence_names)
@@ -650,15 +707,15 @@ def num_tracked_frames(values, dataset_sequences, figures_path, experiments, sha
             values_seq_exp = values[splt['dataset_name']][sequence_name][exp_name]
             if not values_seq_exp.empty:
                 num_frames = values[splt['dataset_name']][sequence_name][exp_name]['num_frames']
-                max_rgb[sequence_name] = max(max(num_frames), max_rgb[sequence_name])
-
+                max_rgb[sequence_name] = int(max(max(num_frames), max_rgb[sequence_name])) + 1
+                ################################################################################
     for sequence_name, splt in splts.items():
         for i_exp, exp_name in enumerate(exp_names):
             values_seq_exp = values[splt['dataset_name']][sequence_name][exp_name]    
             if values_seq_exp.empty:
                 continue
 
-            num_frames = values_seq_exp['num_frames'] 
+            num_frames = [int(value) for value in values_seq_exp['num_frames']]
             num_tracked_frames = values_seq_exp['num_tracked_frames'] 
             num_evaluated_frames = values_seq_exp['num_evaluated_frames']   
          
@@ -753,7 +810,7 @@ def plot_table(ax, experiments, label, norm_label, sequence_nicknames, title = '
 
     all_logs = []
     for exp_name, exp in experiments.items():
-        exp_log = pd.read_csv(exp.log_csv)
+        exp_log = read_csv(exp.log_csv)
         exp_log = exp_log[
         (exp_log['STATUS'] == 'completed') &
         (exp_log['SUCCESS'] == True) &
@@ -893,7 +950,7 @@ def get_baseline_labels(experiments):
 def combine_exp_log(experiments, label, norm_label, unit_factor):
     all_logs = []
     for exp_name, exp in experiments.items():
-        exp_log = pd.read_csv(exp.log_csv)
+        exp_log = read_csv(exp.log_csv)
         exp_log = exp_log[
         (exp_log['STATUS'] == 'completed') &
         (exp_log['SUCCESS'] == True) &
@@ -926,7 +983,7 @@ def plot_table_memory_per_frame(ax, experiments, sequence_nicknames, title = '',
 
     dfs = []
     for exp_name, exp in experiments.items():
-        exp_log = pd.read_csv(exp.log_csv)
+        exp_log = read_csv(exp.log_csv)
         exp_log = exp_log[
         (exp_log['STATUS'] == 'completed') &
         (exp_log['SUCCESS'] == True) &
@@ -1059,7 +1116,7 @@ def plot_table_memory_total(ax, experiments, sequence_nicknames, title = '', uni
 
     dfs = []
     for exp_name, exp in experiments.items():
-        exp_log = pd.read_csv(exp.log_csv)
+        exp_log = read_csv(exp.log_csv)
         exp_log = exp_log[
         (exp_log['STATUS'] == 'completed') &
         (exp_log['SUCCESS'] == True) &
@@ -1387,4 +1444,5 @@ def plot_memory(figures_path, experiments, sequence_nicknames):
     ...
     
     #plot_table(experiments, 'TIME','num_frames')
+
 

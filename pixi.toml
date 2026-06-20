@@ -3,14 +3,15 @@ name = "VSLAM-LAB"
 version = "0.1.0"
 description = "VSLAM-LAB"
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [tasks]
 clean-swap = { cmd = "sudo /sbin/swapoff -a && sudo /sbin/swapon -a" }
-kill-all = { cmd = "pkill -f -e 'droidslam|dpvo|mast3rslam|monogs|orbslam2|orbslam3|anyfeature|okvis2|colmap|glomap|vggt|pycuvslam|vslamlab' && sudo /sbin/swapoff -a && sudo /sbin/swapon -a" } 
+kill-all = { cmd = "pkill -f -e 'droidslam|dpvo|mast3rslam|monogs|orbslam2|orbslam3|anyfeature|okvis2|colmap|glomap|vggt|pycuvslam|vslamlab' && sudo /sbin/swapoff -a && sudo /sbin/swapon -a" }
 
 [environments]
 vslamlab = { features = ["vslamlab"]}
+# development = { features = ["development", "vslamlab"]}
 cuda126 = { features = ["cuda126"], solve-group = "cuda126" }
 py10 = { features = ["py10"], solve-group = "py10" }
 py11 = { features = ["py11"], solve-group = "py11" }
@@ -36,17 +37,24 @@ droidslam-dev = { features = ["droidslam-dev", "cuda126", "py11"], solve-group =
 dpvo-dev = { features = ["dpvo-dev", "cuda126", "py11", "x11", "opengl"], solve-group = "droid" }
 monogs-dev = { features = ["monogs-dev", "cuda126", "py10"], solve-group = "monogs" }
 orbslam2-dev = { features = ["orbslam2-dev", "x11", "opengl"], solve-group = "orb" }
-anyfeature-dev = { features = ["anyfeature-dev", "x11", "opengl"], solve-group = "anyfeature" }
+anyfeature-dev = { features = ["anyfeature-dev", "cuda126", "x11", "opengl"]}
 orbslam3-dev = { features = ["orbslam3-dev", "x11", "opengl"], solve-group = "orb" }
 okvis2-dev = { features = ["okvis2-dev", "cuda126", "py11"], solve-group = "okvis" }
 vggtslam-dev = { features = ["vggtslam-dev", "cuda126", "py11", "vggt"], solve-group = "vggt" }
 
-lightglue = { features = ["lightglue", "cuda126", "py11"], solve-group = "lightglue" }
+allfeature-dev = { features = ["allfeature-dev", "cuda126", "x11", "opengl"] }
 
-# VSLAM-LAB main pipeline    
+lightglue = { features = ["lightglue", "cuda126", "py11"], solve-group = "lightglue" }
+depth-anything = { features = ["depth-anything", "cuda126",  "py11"], solve-group = "depth-anything" }
+
+ros1 = { features = ["ros1"], solve-group = "ros1" }
+ros2 = { features = ["ros2"], solve-group = "ros2" }
+rerun = { features = ["rerun"], solve-group = "rerun" }
+
+# VSLAM-LAB main pipeline
 [feature.vslamlab]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.vslamlab.tasks]
 vslamlab.cmd = "python vslamlab_gui.py vslamlab {{ exp_yaml }} {{ overwrite }}"
@@ -80,7 +88,7 @@ evaluate-allfeature = [{ "task" = "evaluate", "args" = ["configs/exp_allfeature.
 compare-debug.depends-on = [{ "task" = "compare", "args" = ["configs/exp_debug.yaml"] }]
 compare-allfeature = [{ "task" = "compare", "args" = ["configs/exp_allfeature.yaml"] }]
 
-# VSLAM-LAB info functions   
+# VSLAM-LAB info functions
 baseline-info = "python vslamlab_gui.py baseline_info"
 print-baselines = "python vslamlab_gui.py print_baselines"
 print-datasets = "python vslamlab_gui.py print_datasets"
@@ -107,9 +115,14 @@ download-dataset = "python vslamlab_gui.py download_dataset"
 run-exp = "python vslamlab_gui.py run_exp"
 evaluate-exp = "python vslamlab_gui.py evaluate_exp"
 compare-exp = "python vslamlab_gui.py compare_exp"
+validate-dataset.cmd = 'python validate_dataset.py {{ dataset_name }}'
+validate-dataset.cwd = 'Utilities'
+validate-dataset.args = [
+  { "arg" = "dataset_name", "default" = "eth" },
+]
 
 [feature.vslamlab.dependencies]
-python = "*"
+python = "3.13.*"
 pyyaml = "*"
 matplotlib = "*"
 pandas = "*"
@@ -126,18 +139,28 @@ py7zr = "*"
 exifread = "*"
 pyproj = "*"
 nvidia-ml-py = "*"
-evo = "*"
+evo = "==1.34.3"
 git-lfs = "*"
 piexif = "*"
 psutil = "*"
 loguru = "*"
 utm = "*"
-rosbags = "*"
 7zip = "*"
+viser = "*"
+open3d = "*"
+gdown = "*"
+yt-dlp = "*"
+rosbags = "*"
+
+# [feature.development.dependencies]
+# rich = "*"
+# pycodestyle = "*"
+# ruff = "*"
+# isort = "*"
 
 ########################################################################################################################
 ########################################################################################################################
-# droidslam 
+# droidslam
 [feature.droidslam]
 channels = ["https://prefix.dev/conda-forge", "fontan"]
 platforms = ["linux-64"]
@@ -153,11 +176,12 @@ execute-stereo = 'vslamlab_droidslam_stereo'
 
 [feature.droidslam.dependencies]
 droidslam-vslamlab = "*"
-lietorch = { version = "*", channel = "fontan" }  
+lietorch = { version = "*", channel = "fontan" }
+setuptools = "=80.9.0"
 
 # ########################################################################################################################
 # ########################################################################################################################
-# mast3rslam 
+# mast3rslam
 [feature.mast3rslam]
 channels = ["https://prefix.dev/conda-forge", "fontan"]
 platforms = ["linux-64"]
@@ -197,7 +221,7 @@ opencv = "*"
 evo = "*"
 yacs = "*"
 pytorch_scatter = "*"
-einops = "*"   
+einops = "*"
 numba = "*"
 
 ########################################################################################################################
@@ -230,16 +254,14 @@ rich = "*"
 trimesh = "*"
 evo = "*"
 torchmetrics = "*"
-
-[feature.monogs.pypi-dependencies]
-open3d = "==0.17.0"
+open3d = "*"
 
 ########################################################################################################################
 ########################################################################################################################
 # orbslam2
 [feature.orbslam2]
-channels = ["https://prefix.dev/conda-forge", "fontan"]
-platforms = ["linux-64"]
+channels = ["https://prefix.dev/conda-forge", "fontan", "tobiasrobotics"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.orbslam2.tasks]
 git-clone = 'git clone https://huggingface.co/vslamlab/orbslam2-vslamlab Baselines/ORB-SLAM2'
@@ -248,9 +270,8 @@ execute-rgbd = 'vslamlab_orbslam2_rgbd'
 execute-stereo = 'vslamlab_orbslam2_stereo'
 
 [feature.orbslam2.dependencies]
-orbslam2-vslamlab = { channel = "fontan" }
-pangolin = { channel = "fontan" }
-opencv = ">=4.10.0 ,<5"
+orbslam2-vslamlab = "*"
+pangolin = "*"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -277,7 +298,7 @@ opencv = { channel = "fontan" }
 # colmap
 [feature.colmap]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.colmap.system-requirements]
 cuda = "12.6"
@@ -287,7 +308,6 @@ git-clone = { cmd = 'git clone https://huggingface.co/vslamlab/colmap-vslamlab c
 execute-mono = './Baselines/colmap/colmap_reconstruction.sh'
 
 [feature.colmap.dependencies]
-colmap = { build = "*cuda*" }
 yq = "*"
 numpy = "*"
 scipy = "*"
@@ -295,6 +315,15 @@ pandas = "*"
 sqlite = "*"
 opencv = "*"
 tqdm = "*"
+
+[feature.colmap.target.linux-64.dependencies]
+colmap = { build = "*cuda*" }
+
+[feature.colmap.target.osx-arm64.dependencies]
+colmap = "*"
+
+[feature.colmap.target.win-64.dependencies]
+colmap = "*"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -310,8 +339,9 @@ cuda = "12.6"
 git-clone = { cmd = 'git clone https://huggingface.co/vslamlab/glomap-vslamlab glomap', cwd = 'Baselines' }
 execute-mono = { cmd = './Baselines/glomap/glomap_reconstruction.sh' }
 
-[feature.glomap.dependencies]
+[feature.glomap.target.linux-64.dependencies]
 glomap = { build = "*cuda*"}
+
 
 ########################################################################################################################
 ########################################################################################################################
@@ -332,7 +362,8 @@ execute-stereo-vi = 'vslamlab_orbslam3_stereo_vi'
 [feature.orbslam3.dependencies]
 orbslam3-vslamlab = { channel = "fontan" }
 pangolin = { channel = "fontan" }
-opencv = ">=4.10.0 ,<5"
+opencv = ">=4.10.0,<5"
+boost = ">=1.84.0 ,<1.85.0"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -426,6 +457,7 @@ termcolor = "*"
 pytorch-lightning = "*"
 huggingface_hub = "*"
 pytorch-metric-learning = "*"
+nodeenv = "*"
 
 [feature.vggtslam.tasks]
 git-clone = 'git clone https://huggingface.co/vslamlab/vggtslam-vslamlab Baselines/VGGT-SLAM'
@@ -439,13 +471,13 @@ execute-mono = { cmd = 'vslamlab_vggtslam_mono', cwd = "Baselines/VGGT-SLAM" }
 
 # ########################################################################################################################
 # ########################################################################################################################
-# cuda126 
+# cuda126
 [feature.cuda126]
 channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64"]
 
 [feature.cuda126.system-requirements]
-cuda = "12.0"
+cuda = "12.6"
 
 [feature.cuda126.dependencies]
 # CUDA Build Tools
@@ -477,7 +509,7 @@ libnvjitlink = "*"
 # py10
 [feature.py10]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.py10.dependencies]
 python = "3.10.*"
@@ -488,7 +520,7 @@ pip = "*"
 # py11
 [feature.py11]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.py11.dependencies]
 python = "3.11.*"
@@ -499,7 +531,7 @@ pip = "*"
 # x11
 [feature.x11]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
 
 [feature.x11.dependencies]
 xorg-libxext = "*"
@@ -511,15 +543,17 @@ xorg-libsm = "*"
 xorg-libxdmcp = "*"
 xorg-libxau = "*"
 xorg-xorgproto = "*"
+
+[feature.x11.target.linux-64.dependencies]
 libxkbcommon = "*"
 
 # ########################################################################################################################
 # opengl
 [feature.opengl]
 channels = ["https://prefix.dev/conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
-[feature.opengl.dependencies]
+[feature.opengl.target.linux-64.dependencies]
 libgl-devel = "*"
 libegl-devel = "*"
 libglvnd-devel = "*"
@@ -560,7 +594,7 @@ cmake = "*"
 make = "*"
 
 # Specialized Libraries
-lietorch = { version = "*", channel = "fontan" }  
+lietorch = { version = "*", channel = "fontan" }
 
 # Core Libraries
 pytorch-gpu = "*"
@@ -580,7 +614,7 @@ tqdm = "*"
 pandas = "*"
 eigen = "*"
 moderngl = "*"
-moderngl-window = "=3.1.1" 
+moderngl-window = "=3.1.1"
 
 # ########################################################################################################################
 # ########################################################################################################################
@@ -691,7 +725,7 @@ pangolin = { channel = "fontan" }
 tensorboard = "*"
 evo = "*"
 numba = "*"
-kornia  = "*"   
+kornia  = "*"
 yacs = "*"
 
 ########################################################################################################################
@@ -740,9 +774,7 @@ rich = "*"
 ruff = "*"
 nbformat = "==5.7.0"
 pyglfw = "*"
-
-[feature.monogs-dev.pypi-dependencies]
-open3d = "==0.17.0"
+open3d = "*"
 
 ########################################################################################################################
 ########################################################################################################################
@@ -772,8 +804,11 @@ pangolin = { channel = "fontan" }
 ########################################################################################################################
 # anyfeature-dev
 [feature.anyfeature-dev]
-channels = ["fontan", "https://prefix.dev/conda-forge"]
+channels = ["https://prefix.dev/conda-forge", "fontan"]
 platforms = ["linux-64"]
+
+[feature.anyfeature-dev.system-requirements]
+cuda = "12.0"
 
 [feature.anyfeature-dev.tasks]
 git-clone = "./git-clone.sh alejandrofontan AnyFeature-VSLAM AnyFeature-VSLAM-DEV"
@@ -781,21 +816,27 @@ install = { cmd = "./build.sh", cwd = "Baselines/AnyFeature-VSLAM-DEV" }
 execute-mono = { cmd = "./bin/vslamlab_anyfeature_mono",  cwd = "Baselines/AnyFeature-VSLAM-DEV" }
 
 [feature.anyfeature-dev.dependencies]
+cuda-cudart = "*"
 compilers = "*"
-ninja = ">=1.12.1 ,<1.13"
-cmake = ">=3.29.4 ,<3.32"
-pkg-config = ">=0.29.2 ,<0.30"
-eigen  = ">=3.4.0 ,<3.5.0"
-yaml-cpp = ">=0.8.0,<0.9"
-opencv = { channel = "fontan" }
+ninja = "*"
+cmake = "*"
+pkg-config = "*"
+eigen  = "*"
+yaml-cpp = "*"
+opencv = "*"
 pangolin = { channel = "fontan" }
-brisk = { channel = "fontan" }
-akaze = { channel = "fontan" }
-siftgpu = { channel = "fontan" }
+brisk-vslamlab = { channel = "fontan" }
+akaze-vslamlab = { channel = "fontan" }
+siftgpu-vslamlab = { channel = "fontan" }
 g2o = { channel = "fontan" }
 
 huggingface_hub = "*"
 pandas = "*"
+glew = "*"
+
+pytorch-gpu = "*"
+git-lfs = "*"
+zlib = "*"
 
 # ########################################################################################################################
 # ########################################################################################################################
@@ -823,7 +864,7 @@ opencv = ">=4.10.0 ,<5"
 eigen = ">=3.4.0 ,<3.5.0"
 yaml-cpp = ">=0.8.0,<0.9"
 pangolin = { channel = "fontan" }
-boost = "*"
+boost = ">=1.84.0 ,<1.85.0"
 
 # ########################################################################################################################
 # ########################################################################################################################
@@ -902,6 +943,7 @@ termcolor = "*"
 virtualenv = ">=20.10.0"
 lz4 = "*"
 gtsam = { channel = "fontan" }
+nodeenv = "*"
 
 # ########################################################################################################################
 # ########################################################################################################################
@@ -950,3 +992,154 @@ einops = "*"
 pyproj = ">=3.7.1,<4"
 psutil = "*"
 timm = ">=1.0.15,<2"
+
+########################################################################################################################
+########################################################################################################################
+# allfeature-dev
+[feature.allfeature-dev]
+channels = ["https://prefix.dev/conda-forge", "fontan", "https://repo.prefix.dev/spqr-tests"]
+platforms = ["linux-64"]
+
+[feature.allfeature-dev.system-requirements]
+cuda = "12.0"
+
+[feature.allfeature-dev.tasks]
+git-clone = "./git-clone.sh alejandrofontan AllFeature-VSLAM AllFeature-VSLAM-DEV"
+install = { cmd = "pixi run build", cwd = "Baselines/AllFeature-VSLAM-DEV"}
+execute-mono = { cmd = "pixi run execute-mono", cwd = "Baselines/AllFeature-VSLAM-DEV" }
+stream = { cmd = "pixi run stream", cwd = "Baselines/AllFeature-VSLAM-DEV" }
+
+[feature.allfeature-dev.dependencies]
+pixi = "*"
+
+# ########################################################################################################################
+# ########################################################################################################################
+# depth-anything
+[feature.depth-anything]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[feature.depth-anything.system-requirements]
+cuda = "12.6"
+
+[feature.depth-anything.tasks]
+git-clone = "./git-clone.sh VSLAM-LAB Depth-Anything-3-VSLAM-LAB Depth-Anything-3"
+install = {cmd = 'pip install -e .', cwd = 'Baselines/Depth-Anything-3', depends-on = ['git-clone']}
+depth-inference  = {cmd = 'python -m Utilities.depth-anything', depends-on = ['install']}
+
+[feature.depth-anything.dependencies]
+# Torch libraries
+pytorch-gpu = "*"
+torchvision = "*"
+torchcodec = "*"
+
+# Core
+pre-commit = "*"
+trimesh = "*"
+einops = "*"
+huggingface_hub = "*"
+imageio = "*"
+numpy = "<2"
+opencv = "*"
+xformers = "*"
+open3d = "*"
+
+# API / CLI
+fastapi = "*"
+uvicorn = "*"
+requests = "*"
+typer = "*"
+
+# Config / IO
+pillow = "*"
+omegaconf = "*"
+safetensors = "*"
+plyfile = "*"
+
+# 3D / geometry / eval / video
+evo = "*"
+e3nn = "*"
+moviepy = "*"
+pycolmap = "*"
+addict = "*"
+
+pyyaml = "*"
+matplotlib = "*"
+pandas = "*"
+py-opencv = "*"
+scipy = "*"
+inputimeout = "*"
+scikit-learn = "*"
+tqdm = "*"
+google-api-python-client = "*"
+google-auth-oauthlib = "*"
+py7zr = "*"
+exifread = "*"
+pyproj = "*"
+nvidia-ml-py = "*"
+git-lfs = "*"
+piexif = "*"
+psutil = "*"
+loguru = "*"
+utm = "*"
+7zip = "*"
+viser = "*"
+gdown = "*"
+
+# ########################################################################################################################
+# ########################################################################################################################
+# ros1
+[feature.ros1]
+channels = ["https://prefix.dev/conda-forge", "robostack-noetic"]
+platforms = ["linux-64"]
+
+[feature.ros1.tasks]
+extract-rosbag-frames = "python Datasets/extra-files/extract_rosbag_frames.py"
+extract-rosbag-imu = "python Datasets/extra-files/extract_rosbag_imu.py"
+
+[feature.ros1.dependencies]
+ros-noetic-desktop = "*"
+tqdm = "*"
+pandas = "*"
+
+# ########################################################################################################################
+# ########################################################################################################################
+# ros2
+[feature.ros2]
+channels = ["https://prefix.dev/conda-forge", "robostack-humble"]
+platforms = ["linux-64"]
+
+[feature.ros2.tasks]
+extract-ros2bag-frames = "python Datasets/extra-files/extract_ros2bag_frames.py"
+extract-ros2bag-imu = "python Datasets/extra-files/extract_ros2bag_imu.py"
+
+[feature.ros2.dependencies]
+ros-humble-desktop = "*"
+colcon-common-extensions = "*"
+tqdm = "*"
+pandas = "*"
+
+
+# ########################################################################################################################
+# ########################################################################################################################
+# rerun
+[feature.rerun]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[feature.rerun.tasks]
+rerun-vis.cmd = "python rerun-visualize.py --dataset_name {{ dataset }} --sequence_name {{ sequence }}"
+rerun-vis.args = [
+  { "arg" = "dataset", "default" = "eth" },
+  { "arg" = "sequence", "default" = "table_3" },
+]
+rerun-vis.cwd = "Utilities"
+
+[feature.rerun.dependencies]
+
+[dependencies]
+rerun-sdk = ">=0.22.1,<0.32"
+opencv = ">=4.11.0,<5"
+numpy = ">=1.26.4,<3"
+pandas = ">=2.3.3,<4"
+pyyaml = ">=6.0.2,<7"

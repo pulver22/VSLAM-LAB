@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import csv
-import yaml
-import numpy as np
-from pathlib import Path
-from urllib.parse import urljoin
-from typing import Final, Any
 from collections.abc import Iterable
+from pathlib import Path
+from typing import Any, Final
+from urllib.parse import urljoin
+
+import numpy as np
+import yaml
 
 from Datasets.DatasetVSLAMLab import DatasetVSLAMLab
-from utilities import downloadFile, decompressFile
-from path_constants import Retention, BENCHMARK_RETENTION
+from path_constants import BENCHMARK_RETENTION, Retention
+from utilities import decompressFile, downloadFile
 
 MAX_NICKNAME_LEN: Final = 15
 
@@ -29,13 +30,17 @@ class ETH_dataset(DatasetVSLAMLab):
         self.url_download_root: str = cfg["url_download_root"]
 
         # Sequence nicknames
-        self.sequence_nicknames = [s.replace("mannequin", "mann.")
-                                   .replace("einstein_global_light_changes_", "eins.gl.l.ch._")
-                                   .replace("desk_global_light_changes","desk.gl.l.ch.")
-                                   .replace("einstein", "eins.").replace("global", "gl.")
-                                   .replace("camera", "cam.")
-                                   .replace("_", " ")[:MAX_NICKNAME_LEN] for s in self.sequence_names]
-        
+        self.sequence_nicknames = [
+            s.replace("mannequin", "mann.")
+            .replace("einstein_global_light_changes_", "eins.gl.l.ch._")
+            .replace("desk_global_light_changes", "desk.gl.l.ch.")
+            .replace("einstein", "eins.")
+            .replace("global", "gl.")
+            .replace("camera", "cam.")
+            .replace("_", " ")[:MAX_NICKNAME_LEN]
+            for s in self.sequence_names
+        ]
+
         # Depth factor
         self.depth_factor = cfg["depth_factor"]
 
@@ -49,14 +54,16 @@ class ETH_dataset(DatasetVSLAMLab):
 
             if not compressed_file.exists():
                 downloadFile(download_url, str(self.dataset_path))
-            
+
             # Decompress only if needed
-            needs_depth = not (decompressed_folder / "depth").exists() and not (decompressed_folder / "depth_0").exists()
+            needs_depth = (
+                not (decompressed_folder / "depth").exists() and not (decompressed_folder / "depth_0").exists()
+            )
             needs_mono = not decompressed_folder.exists()
 
             if (mode == "mono" and needs_mono) or (mode == "rgbd" and needs_depth):
                 decompressFile(str(compressed_file), str(self.dataset_path))
-     
+
     def create_rgb_folder(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
         for raw, dst in (("rgb", "rgb_0"), ("depth", "depth_0")):
@@ -67,7 +74,7 @@ class ETH_dataset(DatasetVSLAMLab):
 
     def create_rgb_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
-        rgb0_entries = list(self._iter_entries(sequence_path / "rgb.txt",   "rgb/",   "rgb_0/"))
+        rgb0_entries = list(self._iter_entries(sequence_path / "rgb.txt", "rgb/", "rgb_0/"))
         depth_entries = list(self._iter_entries(sequence_path / "depth.txt", "depth/", "depth_0/"))
 
         rgb_csv = sequence_path / "rgb.csv"
@@ -81,19 +88,25 @@ class ETH_dataset(DatasetVSLAMLab):
                 ts_d_ns = int(float(ts_d) * 1e9)
                 w.writerow([ts_r0_ns, path_r0, ts_d_ns, path_d])
         tmp.replace(rgb_csv)
-        
+
     def create_calibration_yaml(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
         with open(sequence_path / "calibration.txt", "r", encoding="utf-8") as f:
             first = f.readline().split()
             fx, fy, cx, cy = map(float, first[:4])
-            rgbd0: dict[str, Any] = {"cam_name": "rgb_0", "cam_type": "rgb+depth", "depth_name": "depth_0",
-                    "cam_model": "pinhole", "focal_length": [fx, fy], "principal_point": [cx, cy],
-                    "depth_factor": float(self.depth_factor),
-                    "fps": float(self.rgb_hz),
-                    "T_BS": np.eye(4)}
+            rgbd0: dict[str, Any] = {
+                "cam_name": "rgb_0",
+                "cam_type": "rgb+depth",
+                "depth_name": "depth_0",
+                "cam_model": "pinhole",
+                "focal_length": [fx, fy],
+                "principal_point": [cx, cy],
+                "depth_factor": float(self.depth_factor),
+                "fps": float(self.rgb_hz),
+                "T_BS": np.eye(4),
+            }
         self.write_calibration_yaml(sequence_name=sequence_name, rgbd=[rgbd0])
-        
+
     def create_groundtruth_csv(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name
         groundtruth_txt = sequence_path / "groundtruth.txt"
@@ -105,7 +118,7 @@ class ETH_dataset(DatasetVSLAMLab):
 
         with open(groundtruth_txt, "r", encoding="utf-8") as fin, open(tmp, "w", newline="", encoding="utf-8") as fout:
             w = csv.writer(fout)
-            w.writerow(["ts (ns)","tx (m)","ty (m)","tz (m)","qx","qy","qz","qw"])
+            w.writerow(["ts (ns)", "tx (m)", "ty (m)", "tz (m)", "qx", "qy", "qz", "qw"])
             for line in fin:
                 s = line.strip()
                 if not s or s.startswith("#"):

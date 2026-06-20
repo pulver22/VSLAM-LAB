@@ -1,0 +1,53 @@
+dataset_name: hilti2026
+
+rgb_hz: 30.0
+modes: ['mono', 'mono-vi']
+cam_models: ['equid4']
+
+url_download_root: "https://drive.google.com/drive/folders"
+
+sequence_names:
+  - 'floor_1_2025_05_05'
+  - 'floor_1_2025_07_07'
+  - 'floor_1_2025_12_02'
+  - 'floor_2_2025_05_05'
+  - 'floor_2_2025_10_28_run_1'
+  - 'floor_2_2025_10_28_run_2'
+  - 'floor_2_2025_12_02'
+  - 'floor_2_2025_12_03'
+  - 'floor_3_2025_05_19'
+  - 'floor_3_2025_12_02'
+  - 'floor_4_2025_05_19'
+  - 'floor_4_2025_12_02'
+  - 'floor_5_2025_12_02'
+  - 'floor_6_2025_06_18'
+  - 'floor_6_2025_07_07'
+  - 'floor_6_2025_12_02_run_1'
+  - 'floor_6_2025_12_02_run_2'
+  - 'floor_7_2025_12_02_run_1'
+  - 'floor_7_2025_12_02_run_2'
+  - 'floor_7_2025_12_03'
+  - 'floor_EG_2025_10_16'
+  - 'floor_EG_2025_12_02_run_1'
+  - 'floor_EG_2025_12_02_run_2'
+  - 'floor_UG1_2025_05_19'
+  - 'floor_UG1_2025_06_18'
+  - 'floor_UG1_2025_10_16'
+  - 'floor_UG1_2025_12_02_run_1'
+  - 'floor_UG1_2025_12_02_run_2'
+  - 'floor_UG1_2025_12_03'
+  - 'floor_UG2_2025_12_02'
+
+about:
+  license: License
+  summary: Hilti Trimble 360 Visual-Inertial SLAM Challenge 2026
+  homepage: https://github.com/Hilti-Research/hilti-trimble-slam-challenge-2026
+  authors:
+    - Samuele Centanni
+    - Yuhao Zhang
+    - Others
+
+vslamlab_maintainer:
+  name: Alejandro Fontan
+  email: alejandro.fontan@qut.edu.au
+  date: 2026-03-07

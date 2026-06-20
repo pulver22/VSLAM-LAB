@@ -24,6 +24,9 @@ class EUROC_dataset(DatasetVSLAMLab):
   
         # Sequence nicknames
         self.sequence_nicknames = [s.replace("_", " ") for s in self.sequence_names]
+        self.sequence_nicknames = [s.replace("easy", "") for s in self.sequence_nicknames]
+        self.sequence_nicknames = [s.replace("medium", "") for s in self.sequence_nicknames]
+        self.sequence_nicknames = [s.replace("difficult", "") for s in self.sequence_nicknames]
 
     def download_sequence_data(self, sequence_name: str) -> None:
         sequence_path = self.dataset_path / sequence_name

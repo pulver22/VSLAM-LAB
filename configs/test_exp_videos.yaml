@@ -1,0 +1,5 @@
+exp_videos_glomap:
+  Config: test_config_videos.yaml
+  NumRuns: 1
+  Parameters: {verbose: 0}
+  Module: glomap

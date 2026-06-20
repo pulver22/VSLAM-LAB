@@ -1,0 +1,30 @@
+dataset_name: madmax
+
+rgb_hz: 30.0
+modes: ['mono', 'mono-vi', 'stereo','stereo-vi']
+cam_models: ['pinhole']
+
+url_download_root: "https://my.hidrive.com/api"
+api_token: "0i0PgRIzgOtYsjYUDRsU"
+
+sequence_names:
+  - A-0
+  - A-1
+  - B-0
+  - C-0
+  - D-0
+  - E-0
+
+about:
+  license: License
+  summary: The MADMAX data set for visual-inertial rover navigation on Mars
+  homepage: https://datasets.arches-projekt.de/morocco2018/
+  authors:
+    - Lukas Meyer
+    - Michal Smíšek
+    - Others
+
+vslamlab_maintainer:
+  name: Alejandro Fontan
+  email: alejandro.fontan@qut.edu.au
+  date: 2026-03-07

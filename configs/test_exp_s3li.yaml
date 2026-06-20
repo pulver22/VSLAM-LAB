@@ -1,0 +1,5 @@
+exp_s3li_orbslam3:
+  Config: test_config_s3li.yaml
+  NumRuns: 1
+  Parameters: {verbose: 1, mode: stereo, rgb_idx: [0,2000]}
+  Module: orbslam3

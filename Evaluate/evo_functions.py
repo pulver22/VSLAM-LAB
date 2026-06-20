@@ -91,7 +91,7 @@ def evo_get_accuracy(zip_files, accuracy_csv):
     ZIP_CHUNK_SIZE = 500
     zip_files.sort()
     zip_files_chunks = [zip_files[i:i + ZIP_CHUNK_SIZE] for i in range(0, len(zip_files), ZIP_CHUNK_SIZE)]
-    zip_files_chunks = [' '.join(file for file in chunk) for chunk in zip_files_chunks]
+    zip_files_chunks = [' '.join(str(file) for file in chunk) for chunk in zip_files_chunks]
 
     for zip_file_chunk in zip_files_chunks:
         if os.path.exists(accuracy_csv):
@@ -121,82 +121,3 @@ def evo_get_accuracy(zip_files, accuracy_csv):
 
     for zip_file in zip_files:
       os.remove(zip_file)
-
-
-def find_groundtruth_txt(trajectories_path, trajectory_file, parameter):
-    ablation_parameters_csv = os.path.join(trajectories_path, ABLATION_PARAMETERS_CSV)
-    traj_name = os.path.basename(trajectory_file)
-    df = pd.read_csv(ablation_parameters_csv)
-    index_str = traj_name.split('_')[0]
-    expId = int(index_str)
-    exp_row = df[df['expId'] == expId]
-    ablation_values = exp_row[parameter].values[0]
-
-    min_noise = df['std_noise'].min()
-    df_noise_filter = df[df['std_noise'] == min_noise]
-
-    threshold_percent = 0.1
-    lower_bound = ablation_values * (1 - threshold_percent / 100)
-    upper_bound = ablation_values * (1 + threshold_percent / 100)
-
-    gt_ids = df_noise_filter[
-        (df_noise_filter[parameter] >= lower_bound) & (df_noise_filter[parameter] <= upper_bound)
-        ]
-    groundtruths_txt = []
-    for gt_id in gt_ids['expId'].values:
-        groundtruth_txt = os.path.join(trajectories_path, f"{str(gt_id).zfill(5)}_KeyFrameTrajectory.txt")
-        if gt_id != expId:
-            if os.path.exists(groundtruth_txt):
-                groundtruths_txt.append(groundtruth_txt)
-
-    return groundtruths_txt
-
-
-def compute_trajectory_length(trajectory_file):
-    df = pd.read_csv(trajectory_file, usecols=['tx', 'ty', 'tz'], delimiter=' ')
-    data = df.to_numpy()
-    distances = np.linalg.norm(np.diff(data, axis=0), axis=1)
-    trajectory_length = np.sum(distances)
-    return trajectory_length
-
-
-def compute_trajectory_lengths(evaluation_folder, metric):
-    csv_file = os.path.join(evaluation_folder, f'{metric}.csv')
-    df = pd.read_csv(csv_file)
-    trajectory_lengths = []
-    for traj_name in df['traj_name']:
-        traj_txt = os.path.join(evaluation_folder, traj_name)
-        traj_tum = traj_txt.replace('.txt', '.tum')
-        if os.path.exists(traj_tum):
-            length = compute_trajectory_length(traj_tum)
-            trajectory_lengths.append(length)
-        else:
-            trajectory_lengths.append(None)
-    df['trajectory_length'] = trajectory_lengths
-    df.to_csv(csv_file, index=False)
-
-if __name__ == "__main__":
-    if len(sys.argv) > 2:
-        function_name = sys.argv[1]
-        max_time_difference = sys.argv[2]
-        trajectories_path = sys.argv[3]
-        evaluation_folder = sys.argv[4]
-        groundtruth_file = sys.argv[5]
-        pseudo_groundtruth = bool(int(sys.argv[6]))
-        numRuns = int(sys.argv[7])
-
-        trajectory_files = find_files_with_string(trajectories_path, "_KeyFrameTrajectory.txt")
-        if function_name == "ate" or function_name == "rpe":
-            for trajectory_file in tqdm(trajectory_files):
-                if pseudo_groundtruth:
-                    parameter = sys.argv[7]
-                    groundtruth_files = find_groundtruth_txt(trajectories_path, trajectory_file, parameter)
-                    for idx, groundtruth_file in enumerate(groundtruth_files):
-                        evo_metric(function_name, groundtruth_file, trajectory_file, evaluation_folder,
-                                   float(max_time_difference), idx)
-                else:
-                    print("aaaaaaaaaaaaaaaaa")
-                    evo_metric(function_name, groundtruth_file, trajectory_file, evaluation_folder,
-                               float(max_time_difference))
-            evo_get_accuracy(function_name, evaluation_folder, numRuns)
-            compute_trajectory_lengths(evaluation_folder, function_name)
