@@ -32,7 +32,14 @@ max_frames: 200
 max_seconds_env: BLT_MAX_SECONDS
 max_seconds: 0
 allow_placeholder_calibration_env: BLT_ALLOW_PLACEHOLDER_CALIBRATION
+use_camera_info_calibration_env: BLT_USE_CAMERA_INFO_CALIBRATION
+use_camera_info_calibration: false
+calibration_file_env: BLT_CALIBRATION_FILE
 calibration_file: dataset_blt_calibration.yaml
+calibration_sanity_check_env: BLT_CALIBRATION_SANITY_CHECK
+calibration_sanity_check: true
+calibration_sanity_tolerance: 0.10
+experimental_calibration_override_env: BLT_EXPERIMENTAL_CALIBRATION_OVERRIDE
 
 about:
   license: Local data only; raw BLT rosbags are not redistributed by this integration.

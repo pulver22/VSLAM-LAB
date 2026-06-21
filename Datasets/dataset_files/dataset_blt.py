@@ -73,6 +73,20 @@ class BLT_dataset(DatasetVSLAMLab):
             cfg.get("allow_placeholder_calibration_env", "BLT_ALLOW_PLACEHOLDER_CALIBRATION"),
             "",
         ).lower() in {"1", "true", "yes", "on"}
+        self.use_camera_info_calibration = os.environ.get(
+            cfg.get("use_camera_info_calibration_env", "BLT_USE_CAMERA_INFO_CALIBRATION"),
+            str(cfg.get("use_camera_info_calibration", False)),
+        ).lower() in {"1", "true", "yes", "on"}
+        self.calibration_file_env = cfg.get("calibration_file_env", "BLT_CALIBRATION_FILE")
+        self.calibration_sanity_check = os.environ.get(
+            cfg.get("calibration_sanity_check_env", "BLT_CALIBRATION_SANITY_CHECK"),
+            str(cfg.get("calibration_sanity_check", True)),
+        ).lower() in {"1", "true", "yes", "on"}
+        self.calibration_sanity_tolerance = float(cfg.get("calibration_sanity_tolerance", 0.10))
+        self.experimental_calibration_override = os.environ.get(
+            cfg.get("experimental_calibration_override_env", "BLT_EXPERIMENTAL_CALIBRATION_OVERRIDE"),
+            "",
+        ).lower() in {"1", "true", "yes", "on"}
         self.calibration = self._load_calibration(cfg)
         self._calibration_info_by_sequence: dict[str, Any] = {}
         self._calibration_info_topic_by_sequence: dict[str, str] = {}
@@ -185,7 +199,7 @@ class BLT_dataset(DatasetVSLAMLab):
     def create_calibration_yaml(self, sequence_name: str) -> None:
         cal = dict(self.calibration[sequence_name])
         camera_info = self._calibration_info_by_sequence.get(sequence_name)
-        if camera_info is None and self.camera_info_topics:
+        if camera_info is None and self.use_camera_info_calibration and self.camera_info_topics:
             camera_info_result = self._extract_camera_info(
                 bag_path=self.get_source_bag_path(sequence_name),
                 camera_info_topics=self.camera_info_topics,
@@ -214,6 +228,9 @@ class BLT_dataset(DatasetVSLAMLab):
             }
         else:
             self._validate_placeholder_calibration(sequence_name, cal)
+            calibration_diagnostics.update(
+                self._validate_tracked_calibration_against_camera_info(sequence_name, cal)
+            )
 
         rgb0: dict[str, Any] = {
             "cam_name": cal["cam_name"],
@@ -315,9 +332,12 @@ class BLT_dataset(DatasetVSLAMLab):
         return self.source_root / source_bag
 
     def _load_calibration(self, cfg: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        calibration_file = cfg.get("calibration_file")
+        calibration_file = os.environ.get(self.calibration_file_env, cfg.get("calibration_file", ""))
         if calibration_file:
-            self.calibration_yaml_path = self.yaml_file.parent / calibration_file
+            calibration_path = Path(calibration_file).expanduser()
+            if not calibration_path.is_absolute():
+                calibration_path = self.yaml_file.parent / calibration_path
+            self.calibration_yaml_path = calibration_path
             with open(self.calibration_yaml_path, "r", encoding="utf-8") as f:
                 calibration_cfg = yaml.safe_load(f) or {}
             return dict(calibration_cfg["calibration"])
@@ -347,10 +367,14 @@ class BLT_dataset(DatasetVSLAMLab):
             "image_topic": self.image_topic,
             "image_transport": self.image_transport,
             "camera_info_topics": self.camera_info_topics,
+            "calibration_yaml_path": str(self.calibration_yaml_path),
+            "calibration_sanity_check": self.calibration_sanity_check,
+            "calibration_sanity_tolerance": self.calibration_sanity_tolerance,
             "groundtruth_topic": self.groundtruth_topic,
             "tf_topics": self.tf_topics,
             "camera_frame": self.camera_frame,
             "camera_frame_candidates": self.camera_frame_candidates,
+            "use_camera_info_calibration": self.use_camera_info_calibration,
             "max_frames": self.max_frames,
             "max_seconds": self.max_seconds,
             "modes": self.modes,
@@ -408,11 +432,12 @@ class BLT_dataset(DatasetVSLAMLab):
         return duration_s >= max_seconds
 
     def _resolve_groundtruth_target_frame(self, tf_edges: dict[str, list[tuple[str, np.ndarray]]]) -> str:
-        if self.camera_frame:
-            return self._clean_frame(self.camera_frame)
-
         available_frames = self._available_tf_frames(tf_edges)
-        for frame in self.camera_frame_candidates:
+        preferred_frames: list[str] = []
+        if self.camera_frame:
+            preferred_frames.append(self.camera_frame)
+        preferred_frames.extend(self.camera_frame_candidates)
+        for frame in preferred_frames:
             clean_frame = self._clean_frame(frame)
             if clean_frame in available_frames:
                 return clean_frame
@@ -601,6 +626,68 @@ class BLT_dataset(DatasetVSLAMLab):
                 "BLT_ALLOW_PLACEHOLDER_CALIBRATION=1 to acknowledge the limitation."
             )
 
+    def _validate_tracked_calibration_against_camera_info(
+        self,
+        sequence_name: str,
+        calibration: dict[str, Any],
+    ) -> dict[str, Any]:
+        if (
+            not self.calibration_sanity_check
+            or self.use_camera_info_calibration
+            or not self.camera_info_topics
+        ):
+            return {"calibration_sanity_status": "skipped"}
+
+        camera_info_result = self._extract_camera_info(
+            bag_path=self.get_source_bag_path(sequence_name),
+            camera_info_topics=self.camera_info_topics,
+            rgb_time_bounds=self._rgb_time_bounds(sequence_name),
+        )
+        if camera_info_result is None:
+            return {"calibration_sanity_status": "skipped_no_camera_info"}
+
+        camera_info_topic, camera_info = camera_info_result
+        self._validate_camera_info_dimensions(sequence_name, camera_info)
+        camera_info_calibration = self._camera_info_to_calibration(camera_info)
+        tracked_focal = [float(v) for v in calibration.get("focal_length", [])]
+        tracked_principal = [float(v) for v in calibration.get("principal_point", [])]
+        camera_focal = [float(v) for v in camera_info_calibration["focal_length"]]
+        camera_principal = [float(v) for v in camera_info_calibration["principal_point"]]
+        image_width = float(getattr(camera_info, "width", 0) or 1)
+        image_height = float(getattr(camera_info, "height", 0) or 1)
+        focal_delta = [
+            abs(tracked_focal[i] - camera_focal[i]) / max(abs(camera_focal[i]), 1.0)
+            for i in range(min(len(tracked_focal), len(camera_focal)))
+        ]
+        principal_delta = [
+            abs(tracked_principal[0] - camera_principal[0]) / max(image_width, 1.0),
+            abs(tracked_principal[1] - camera_principal[1]) / max(image_height, 1.0),
+        ] if len(tracked_principal) >= 2 and len(camera_principal) >= 2 else []
+        max_delta = max(focal_delta + principal_delta) if focal_delta or principal_delta else 0.0
+        status = "ok" if max_delta <= self.calibration_sanity_tolerance else "mismatch"
+        diagnostics = {
+            "calibration_sanity_status": status,
+            "camera_info_reference_topic": camera_info_topic,
+            "camera_info_reference_width": int(getattr(camera_info, "width", 0)),
+            "camera_info_reference_height": int(getattr(camera_info, "height", 0)),
+            "camera_info_reference_focal_length": camera_focal,
+            "camera_info_reference_principal_point": camera_principal,
+            "calibration_sanity_max_relative_delta": float(max_delta),
+        }
+        if status == "mismatch" and self.experimental_calibration_override:
+            diagnostics["calibration_sanity_status"] = "override_mismatch"
+            return diagnostics
+        if status == "mismatch":
+            raise ValueError(
+                f"BLT tracked calibration for {sequence_name} differs from CameraInfo "
+                f"beyond {self.calibration_sanity_tolerance:.0%}: "
+                f"max_relative_delta={max_delta:.3f}; tracked_focal={tracked_focal}; "
+                f"camera_info_focal={camera_focal}; topic={camera_info_topic}. "
+                "Set BLT_EXPERIMENTAL_CALIBRATION_OVERRIDE=1 only for intentional "
+                "calibration ablations."
+            )
+        return diagnostics
+
     def _validate_camera_info_dimensions(self, sequence_name: str, camera_info: Any) -> None:
         sequence_path = self.dataset_path / sequence_name
         image_dimension = self._first_rgb_image_dimension(sequence_path / "rgb_0")
@@ -644,9 +731,8 @@ class BLT_dataset(DatasetVSLAMLab):
         comparable_keys = [
             "image_topic",
             "calibration_source",
-            "camera_info_topic",
-            "camera_info_width",
-            "camera_info_height",
+            "focal_length",
+            "principal_point",
             "groundtruth_topic",
             "groundtruth_target_frame",
         ]
@@ -674,6 +760,8 @@ class BLT_dataset(DatasetVSLAMLab):
                 "calibration_source": diagnostics.get("calibration_source"),
                 "camera_info_width": diagnostics.get("camera_info_width"),
                 "camera_info_height": diagnostics.get("camera_info_height"),
+                "focal_length": diagnostics.get("focal_length"),
+                "principal_point": diagnostics.get("principal_point"),
                 "groundtruth_topic": diagnostics.get("groundtruth_topic"),
                 "groundtruth_count": diagnostics.get("groundtruth_count"),
                 "groundtruth_path_length_m": diagnostics.get("groundtruth_path_length_m"),
@@ -739,9 +827,8 @@ class BLT_dataset(DatasetVSLAMLab):
             "rgb_inferred_fps",
             "rgb_duration_s",
             "calibration_source",
-            "camera_info_topic",
-            "camera_info_width",
-            "camera_info_height",
+            "focal_length",
+            "principal_point",
             "groundtruth_topic",
             "groundtruth_count",
             "groundtruth_path_length_m",
@@ -756,8 +843,14 @@ class BLT_dataset(DatasetVSLAMLab):
             if diagnostics.get(key) in (None, "", []):
                 issues.append(f"missing diagnostic: {key}")
 
-        if diagnostics.get("calibration_source") != "camera_info":
-            issues.append("calibration_source is not camera_info")
+        expected_calibration_source = (
+            "camera_info" if self.use_camera_info_calibration else "tracked_calibration_yaml"
+        )
+        if diagnostics.get("calibration_source") != expected_calibration_source:
+            issues.append(
+                "calibration_source is "
+                f"{diagnostics.get('calibration_source')!r}, expected {expected_calibration_source!r}"
+            )
         if diagnostics.get("groundtruth_topic") != self.groundtruth_topic:
             issues.append(
                 f"groundtruth_topic is {diagnostics.get('groundtruth_topic')!r}, expected {self.groundtruth_topic!r}"

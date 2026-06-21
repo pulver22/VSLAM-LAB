@@ -1,70 +1,70 @@
 metadata:
-  source: Median of preferred BLT bag CameraInfo samples.
-  note: Common calibration for BLT monthly DPVO experiments.
+  source: Stereolabs ZED2i nominal 2.1mm wide-angle profile derived from published 120deg diagonal FOV and 1920x1080 output.
+  note: Common tracked nominal calibration profile used by default for reproducible BLT experiments; per-bag CameraInfo extraction is opt-in.
 calibration:
   ktima_2022_03:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0
   ktima_2022_04:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0
   ktima_2022_05:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0
   ktima_2022_06:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0
   ktima_2022_07:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0
   ktima_2022_09:
-    source: median preferred BLT bag CameraInfo
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
     cam_name: rgb_0
     cam_type: rgb
     cam_model: radtan5
     distortion_type: radtan
-    focal_length: [1054.6407470703125, 1054.6407470703125]
-    principal_point: [952.2294311523438, 553.576904296875]
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
     distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
     image_dimension: [1920, 1080]
     fps: 10.0

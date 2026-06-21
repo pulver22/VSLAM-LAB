@@ -29,6 +29,8 @@ BLT_METADATA_BAG = (
     if BLT_LOCAL_ROOT
     else None
 )
+BLT_COMMON_FOCAL_LENGTH = [1054.6407470703125, 1054.6407470703125]
+BLT_COMMON_PRINCIPAL_POINT = [952.2294311523438, 553.576904296875]
 
 
 def _vector(x=0.0, y=0.0, z=0.0):
@@ -418,6 +420,15 @@ def test_blt_missing_tf_chain_names_frames_in_error():
         )
 
 
+def test_blt_groundtruth_target_falls_back_to_available_candidate(tmp_path):
+    dataset = get_dataset("blt", tmp_path)
+    tf_edges = BLT_dataset._tf_edges_from_transforms(
+        [_transform("map", "base_link", (1.0, 2.0, 3.0))]
+    )
+
+    assert dataset._resolve_groundtruth_target_frame(tf_edges) == "base_link"
+
+
 def test_blt_decodes_compressed_image_messages():
     cv2 = pytest.importorskip("cv2")
     import numpy as np
@@ -555,6 +566,7 @@ def test_blt_writes_calibration_yaml_from_camera_info(tmp_path):
     rgb_path.mkdir(parents=True)
     image = np.zeros((480, 640, 3), dtype=np.uint8)
     assert cv2.imwrite(str(rgb_path / "1654690000000000000.png"), image)
+    dataset.use_camera_info_calibration = True
     dataset._calibration_info_by_sequence[BLT_SEQUENCE] = _camera_info(
         width=640,
         height=480,
@@ -611,11 +623,12 @@ def test_blt_uses_tracked_calibration_profile_for_hd_images_without_camera_info(
     dataset.create_calibration_yaml(BLT_SEQUENCE)
 
     calibration_yaml = (sequence_path / "calibration.yaml").read_text(encoding="utf-8")
-    assert "focal_length: [1051.994384765625, 1051.994384765625]" in calibration_yaml
-    assert "principal_point: [952.2286987304688, 553.5765380859375]" in calibration_yaml
+    assert "focal_length: [1054.6407470703125, 1054.6407470703125]" in calibration_yaml
+    assert "principal_point: [952.2294311523438, 553.576904296875]" in calibration_yaml
     assert "image_dimension: [1920, 1080]" in calibration_yaml
     diagnostics = dataset._read_diagnostics(sequence_path / "blt_diagnostics.yaml")
     assert diagnostics["calibration_source"] == "tracked_calibration_yaml"
+    assert diagnostics["calibration_sanity_status"] == "skipped"
 
 
 def test_blt_loads_tracked_calibration_yaml(tmp_path):
@@ -623,14 +636,92 @@ def test_blt_loads_tracked_calibration_yaml(tmp_path):
 
     assert dataset.calibration_yaml_path.name == "dataset_blt_calibration.yaml"
     assert dataset.calibration[BLT_SEQUENCE]["cam_model"] == "radtan5"
-    assert dataset.calibration[BLT_SEQUENCE]["focal_length"] == [
-        1051.994384765625,
-        1051.994384765625,
-    ]
-    assert dataset.calibration["ktima_2022_03"]["principal_point"] == [
-        952.2301635742188,
-        553.5770263671875,
-    ]
+    assert dataset.calibration[BLT_SEQUENCE]["focal_length"] == BLT_COMMON_FOCAL_LENGTH
+    assert dataset.calibration["ktima_2022_03"]["principal_point"] == BLT_COMMON_PRINCIPAL_POINT
+    assert dataset.calibration["ktima_2022_03"]["focal_length"] == dataset.calibration["ktima_2022_04"]["focal_length"]
+    assert dataset.calibration["ktima_2022_03"]["principal_point"] == dataset.calibration["ktima_2022_04"]["principal_point"]
+    assert dataset.use_camera_info_calibration is False
+
+
+def test_blt_calibration_file_env_selects_explicit_ablation_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "BLT_CALIBRATION_FILE",
+        "dataset_blt_calibration_zed2i_nominal_635.yaml",
+    )
+
+    dataset = get_dataset("blt", tmp_path)
+
+    assert dataset.calibration_yaml_path.name == "dataset_blt_calibration_zed2i_nominal_635.yaml"
+    assert dataset.calibration[BLT_SEQUENCE]["focal_length"] == [635.706, 635.706]
+    assert dataset.calibration[BLT_SEQUENCE]["principal_point"] == [960.0, 540.0]
+
+
+def test_blt_tracked_calibration_sanity_rejects_camera_info_mismatch(tmp_path, monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    root = tmp_path / "ktima"
+    bag_path = root / BLT_BAG
+    bag_path.parent.mkdir(parents=True)
+    bag_path.write_bytes(b"bag")
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    monkeypatch.setenv(
+        "BLT_CALIBRATION_FILE",
+        "dataset_blt_calibration_zed2i_nominal_635.yaml",
+    )
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
+    rgb_path = sequence_path / "rgb_0"
+    rgb_path.mkdir(parents=True)
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    assert cv2.imwrite(str(rgb_path / "1654690000000000000.jpg"), image)
+    monkeypatch.setattr(
+        dataset,
+        "_extract_camera_info",
+        lambda **_kwargs: (
+            "/front/zed_node/rgb/camera_info",
+            _camera_info(k=(1054.0, 0.0, 952.0, 0.0, 1054.0, 554.0, 0.0, 0.0, 1.0)),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="differs from CameraInfo.*tracked_focal=.*635.706"):
+        dataset.create_calibration_yaml(BLT_SEQUENCE)
+
+
+def test_blt_tracked_calibration_sanity_override_records_mismatch(tmp_path, monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+
+    root = tmp_path / "ktima"
+    bag_path = root / BLT_BAG
+    bag_path.parent.mkdir(parents=True)
+    bag_path.write_bytes(b"bag")
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    monkeypatch.setenv(
+        "BLT_CALIBRATION_FILE",
+        "dataset_blt_calibration_zed2i_nominal_635.yaml",
+    )
+    monkeypatch.setenv("BLT_EXPERIMENTAL_CALIBRATION_OVERRIDE", "1")
+    dataset = get_dataset("blt", tmp_path)
+    sequence_path = dataset.dataset_path / BLT_SEQUENCE
+    rgb_path = sequence_path / "rgb_0"
+    rgb_path.mkdir(parents=True)
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    assert cv2.imwrite(str(rgb_path / "1654690000000000000.jpg"), image)
+    monkeypatch.setattr(
+        dataset,
+        "_extract_camera_info",
+        lambda **_kwargs: (
+            "/front/zed_node/rgb/camera_info",
+            _camera_info(k=(1054.0, 0.0, 952.0, 0.0, 1054.0, 554.0, 0.0, 0.0, 1.0)),
+        ),
+    )
+
+    dataset.create_calibration_yaml(BLT_SEQUENCE)
+
+    diagnostics = dataset._read_diagnostics(sequence_path / "blt_diagnostics.yaml")
+    assert diagnostics["calibration_sanity_status"] == "override_mismatch"
+    assert diagnostics["calibration_sanity_max_relative_delta"] > 0.10
 
 
 def test_blt_duration_limit_stops_after_elapsed_time(tmp_path):
@@ -677,6 +768,7 @@ def test_blt_extraction_fingerprint_changes_with_source_and_limits(tmp_path, mon
     assert "depth_factor" not in fingerprint
     assert fingerprint["groundtruth_topic"] == "/odometry/gps"
     assert fingerprint["camera_frame"] == "front_left_camera_optical_frame"
+    assert fingerprint["use_camera_info_calibration"] is False
 
 
 def test_blt_stale_rgb_outputs_are_regenerated_when_fingerprint_changes(tmp_path, monkeypatch):
@@ -791,10 +883,9 @@ def test_blt_extraction_gate_reports_failures_and_blocks_experiments(tmp_path, m
                 "image_count": 20,
                 "rgb_inferred_fps": 15.0,
                 "rgb_duration_s": 1.3,
-                "calibration_source": "camera_info",
-                "camera_info_topic": "/front/zed_node/rgb/camera_info",
-                "camera_info_width": 1920,
-                "camera_info_height": 1080,
+                "calibration_source": "tracked_calibration_yaml",
+                "focal_length": [635.706, 635.706],
+                "principal_point": [960.0, 540.0],
                 "groundtruth_topic": "/odometry/gps",
                 "groundtruth_count": 40,
                 "groundtruth_path_length_m": 2.0,
@@ -836,10 +927,9 @@ def test_blt_extraction_gate_requires_identical_contract(tmp_path, monkeypatch):
                     "image_count": 20,
                     "rgb_inferred_fps": 15.0,
                     "rgb_duration_s": 1.3,
-                    "calibration_source": "camera_info",
-                    "camera_info_topic": "/front/zed_node/rgb/camera_info",
-                    "camera_info_width": 1920,
-                    "camera_info_height": 1080,
+                    "calibration_source": "tracked_calibration_yaml",
+                    "focal_length": [635.706, 635.706],
+                    "principal_point": [960.0, 540.0],
                     "groundtruth_topic": "/odometry/gps",
                     "groundtruth_count": 40,
                     "groundtruth_path_length_m": 2.0,
