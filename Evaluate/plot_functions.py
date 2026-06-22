@@ -48,146 +48,157 @@ import logging
 from Evaluate.BenchmarkVSLAMLab import BenchmarkVSLAMLab as BM
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 def robustMedian(arr):
     return np.nanmedian(arr) if np.isfinite(arr).any() else np.nan
 
+def _trajectory_grid_shape(num_trajectories: int, max_cols: int = 4) -> tuple[int, int]:
+    if num_trajectories <= 0:
+        return 1, 1
+    num_cols = min(max_cols, num_trajectories)
+    num_rows = math.ceil(num_trajectories / num_cols)
+    return num_rows, num_cols
+
+def _read_tum_trajectory(tum_file: str) -> pd.DataFrame:
+    traj = pd.read_csv(tum_file, sep=r"\s+", engine="python")
+    if not {"tx", "ty", "tz"}.issubset(traj.columns):
+        traj = pd.read_csv(tum_file, sep=r"\s+", header=None, engine="python")
+        traj.columns = ["ts", "tx", "ty", "tz", "qx", "qy", "qz", "qw"][: len(traj.columns)]
+    return traj
+
+def _extract_run_id(accuracy_row_index: int, accuracy_row: pd.Series) -> int | None:
+    """Resolve the evaluated run id from an accuracy row, or None if unavailable."""
+    traj_name = str(accuracy_row.get("traj_name", ""))
+    traj_prefix = traj_name.split("_", 1)[0]
+    if traj_prefix.isdigit():
+        return int(traj_prefix)
+    if "exp_it" in accuracy_row and pd.notna(accuracy_row["exp_it"]):
+        return int(accuracy_row["exp_it"])
+    if isinstance(accuracy_row_index, (int, np.integer)):
+        return int(accuracy_row_index)
+    logger.warning("Unable to infer run id from accuracy row %s", accuracy_row.to_dict())
+    return None
+
 def plot_trajectories(dataset_sequences, exp_names, 
                       dataset_nicknames, experiments,
                         accuracies, comparison_path):
-    num_trajectories = 0
-    for i_dataset, (dataset_name, sequence_names) in enumerate(dataset_sequences.items()):
-        for i_sequence, sequence_name in enumerate(sequence_names):
-            num_trajectories = num_trajectories + 1
+    num_trajectories = sum(len(sequence_names) for sequence_names in dataset_sequences.values())
+    num_rows, num_cols = _trajectory_grid_shape(num_trajectories)
 
-    # Figure dimensions
-    num_cols = 6
-    num_rows = math.ceil(num_trajectories / num_cols)
-    xSize = num_cols * 2.5
-    ySize = num_rows * 2
-
-    fig, axs = plt.subplots(num_rows, num_cols, figsize=(xSize, ySize))
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(3.8 * num_cols, 3.2 * num_rows), squeeze=False)
     axs = axs.flatten()
 
     # Create legend handles
-    legend_handles = []
-    legend_handles.append(Patch(color='green', label='gt'))
+    exp_colors = {}
+    legend_handles = [Patch(color='black', label='gt')]
     for i_exp, exp_name in enumerate(exp_names):
         baseline = get_baseline(experiments[exp_name].module)
-        legend_handles.append(Patch(color=baseline.color, label=exp_names[i_exp]), )
+        exp_colors[exp_name] = baseline.color
+        legend_handles.append(Patch(color=baseline.color, label=exp_names[i_exp]))
 
     i_traj = 0
-    there_is_gt = False
+    error_series = []
     for i_dataset, (dataset_name, sequence_names) in enumerate(dataset_sequences.items()):
         for i_sequence, sequence_name in enumerate(sequence_names):
-            #x_max , y_max = 0, 0
+            ax = axs[i_traj]
             aligment_with_gt = False
+            there_is_gt = False
+            pca = None
+            x_shift = 0
+            y_shift = 0
             for i_exp, exp_name in enumerate(exp_names):
                 vslam_lab_evaluation_folder_seq = os.path.join(experiments[exp_name].folder, dataset_name.upper(),
                                                                sequence_name, VSLAM_LAB_EVALUATION_FOLDER)
 
                 if accuracies[dataset_name][sequence_name][exp_name].empty:
                     continue
-                
-                accu = accuracies[dataset_name][sequence_name][exp_name]['rmse'] / accuracies[dataset_name][sequence_name][exp_name]['num_tracked_frames']
+
+                accuracy_df = accuracies[dataset_name][sequence_name][exp_name]
+                accu = accuracy_df['rmse']
                 idx = accu.idxmin()
+                run_idx = _extract_run_id(idx, accuracy_df.loc[idx])
+                if run_idx is None:
+                    continue
                 if not aligment_with_gt:                   
 
-                    gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{idx:05d}_gt.tum')
-                    gt_file_complete = os.path.join(experiments[exp_name].folder, dataset_name.upper(),
-                                                               sequence_name, f'groundtruth.csv')
+                    gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_gt.tum')
                     there_is_gt = False
                     if os.path.exists(gt_file):
                         there_is_gt = True
-                        gt_traj = pd.read_csv(gt_file, delimiter=' ')
-                        
+                        gt_traj = _read_tum_trajectory(gt_file)
                         pca_df = pd.DataFrame(gt_traj, columns=['tx', 'ty', 'tz'])
                         pca = PCA(n_components=2)
                         pca.fit(pca_df)
                         gt_transformed = pca.transform(pca_df)
-                        x_shift = 1.2*gt_transformed[:, 0].min()
-                        y_shift = 1.2* gt_transformed[:, 1].min()
-                        x_max = 1.2* gt_transformed[:, 0].max() - x_shift
-                        y_max = 1.2* gt_transformed[:, 1].max() - y_shift
-                                           
-                        gt_file_complete = pd.read_csv(gt_file_complete)
-                        gt_file_complete = gt_file_complete.rename(columns={
-                        "ts (ns)": "ts", "tx (m)": "tx", "ty (m)": "ty", "tz (m)": "tz"})
-                        pca_df = pd.DataFrame(gt_file_complete, columns=['tx', 'ty', 'tz'])
-                        gt_file_complete_transformed = pca.transform(pca_df)
+                        x_shift = gt_transformed[:, 0].min()
+                        y_shift = gt_transformed[:, 1].min()
+                        ax.plot(gt_transformed[:, 0]-x_shift, gt_transformed[:, 1]-y_shift, label='gt', linestyle='-', color='black', linewidth=1.5)
+                    aligment_with_gt = True
 
-                        axs[i_traj].plot(gt_file_complete_transformed[:, 0]-x_shift, gt_file_complete_transformed[:, 1]-y_shift, label='gt',
-                                          linestyle='-', color='green', linewidth=2)
-                        axs[i_traj].plot(gt_transformed[:, 0]-x_shift, gt_transformed[:, 1]-y_shift, 
-                                         label='gt', marker='o', color='palegreen',  markersize=6, alpha=1)
-                        aligment_with_gt = True
-                    else:
-                        x_shift = 0
-                        y_shift = 0
-                        x_max = 1
-                        y_max = 1
-
-                search_pattern = os.path.join(vslam_lab_evaluation_folder_seq, '*_KeyFrameTrajectory.tum*')
+                search_pattern = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_KeyFrameTrajectory.tum*')
                 files = glob.glob(search_pattern)
-                aligned_traj = pd.read_csv(files[idx], delimiter=' ')
-                pca_df = pd.DataFrame(aligned_traj, columns=['tx', 'ty', 'tz'])
                 if len(files) == 0:
                     continue
-                if there_is_gt:
+                files.sort()
+                aligned_traj = _read_tum_trajectory(files[0])
+                pca_df = pd.DataFrame(aligned_traj, columns=['tx', 'ty', 'tz'])
+                if there_is_gt and pca is not None:
                     traj_transformed = pca.transform(pca_df)
+                    gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_gt.tum')
+                    if os.path.exists(gt_file):
+                        gt_traj = _read_tum_trajectory(gt_file)
+                        n = min(len(gt_traj), len(aligned_traj))
+                        if n > 0:
+                            errors = np.linalg.norm(
+                                aligned_traj[["tx", "ty", "tz"]].to_numpy()[:n]
+                                - gt_traj[["tx", "ty", "tz"]].to_numpy()[:n],
+                                axis=1,
+                            )
+                            error_series.append((dataset_name, sequence_name, exp_name, np.arange(n), errors))
                 else:
                     traj_transformed = pca_df
                     traj_transformed = traj_transformed.to_numpy()
 
-                baseline = get_baseline(experiments[exp_name].module)
-                axs[i_traj].plot(traj_transformed[:, 0]-x_shift, traj_transformed[:, 1]-y_shift,
-                                    label=exp_name, marker='.', linestyle='-', color=baseline.color)
+                ax.plot(traj_transformed[:, 0]-x_shift, traj_transformed[:, 1]-y_shift,
+                        label=exp_name, linestyle='-', color=exp_colors[exp_name], linewidth=1.0)
 
-            x_ticks = [round(x_max, 1)]
-            y_ticks = [0,round(y_max, 1)]
-            axs[i_traj].set_xticks(x_ticks)
-            axs[i_traj].set_yticks(y_ticks)
-
-            # Format tick labels to 1 decimal place
-            axs[i_traj].xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
-            axs[i_traj].yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.1f}'))
-
-            # Add minor ticks for the grid (every 10% of the axis range)
-            axs[i_traj].xaxis.set_minor_locator(ticker.MultipleLocator(x_max / 4))
-            axs[i_traj].yaxis.set_minor_locator(ticker.MultipleLocator(y_max / 4))
-
-            # Enable the grid for both major and minor ticks, but keep labels only for major ticks
-            axs[i_traj].grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-            axs[i_traj].spines['top'].set_visible(False)   # Remove top border
-            axs[i_traj].spines['right'].set_visible(False) # Remove right border
-            #axs[i_traj].spines['left'].set_visible(False)  # Remove left border (optional)
-            #axs[i_traj].spines['bottom'].set_visible(False) # Remove bottom border (optional)
-
-            # Hide minor tick labels while keeping the minor grid lines
-            axs[i_traj].tick_params(axis='both', which='minor', labelbottom=False, labelleft=False)
-            axs[i_traj].tick_params(axis='y', labelsize=15, rotation=90) 
-            axs[i_traj].tick_params(axis='x', labelsize=15, rotation=0) 
-
-            axs[i_traj].tick_params(axis='x', pad=10) 
-            axs[i_traj].set_xticklabels([f"{x_ticks[0]:.2f}"], ha='right')  
-            axs[i_traj].set_yticklabels([f"{y_ticks[0]:.0f}",f"{y_ticks[1]:.2f}"])  
+            ax.set_title(dataset_nicknames[dataset_name][i_sequence], fontsize=10)
+            ax.set_aspect("equal", adjustable="datalim")
+            ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+            ax.tick_params(axis='both', labelsize=8)
             
             i_traj = i_traj + 1
 
+    for ax in axs[i_traj:]:
+        ax.set_visible(False)
 
-    plt.tight_layout()
-    plot_name = os.path.join(comparison_path, f"trajectories.pdf")
+    fig.legend(handles=legend_handles, loc='lower center', ncol=1, fontsize=8)
+    fig.tight_layout(rect=[0, 0.24, 1, 1])
+    figures_path = comparison_path
+    os.makedirs(figures_path, exist_ok=True)
+    plot_pdf = os.path.join(figures_path, "trajectories.pdf")
+    plot_png = os.path.join(figures_path, "trajectories.png")
+    fig.savefig(plot_pdf, format='pdf', bbox_inches="tight")
+    fig.savefig(plot_png, format='png', dpi=180, bbox_inches="tight")
 
-    i_traj = 0
-    for i_dataset, (dataset_name, sequence_names) in enumerate(dataset_sequences.items()):
-        for i_sequence, sequence_name in enumerate(sequence_names):
-            for i_exp, exp_name in enumerate(exp_names):
-                axs[i_traj].set_title(dataset_nicknames[dataset_name][i_sequence], fontsize=15)
-            i_traj = i_traj + 1    
-    #fig.legend(handles=legend_handles, loc='lower center', ncol=len(legend_handles))
-    plt.subplots_adjust(bottom=0.3)
-    plt.show(block=False)
-    plt.savefig(plot_name, format='pdf')
+    if error_series:
+        error_fig, error_ax = plt.subplots(figsize=(8, 3.5))
+        for dataset_name, sequence_name, exp_name, x_values, errors in error_series:
+            error_ax.plot(x_values, errors, label=f"{sequence_name}:{exp_name}", color=exp_colors[exp_name], linewidth=1.0)
+        error_ax.set_xlabel("matched frame")
+        error_ax.set_ylabel("aligned ATE error (m)")
+        error_ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        error_ax.legend(fontsize=8)
+        error_fig.tight_layout()
+        error_fig.savefig(os.path.join(figures_path, "trajectory_error_vs_time.pdf"), format="pdf")
+        error_fig.savefig(os.path.join(figures_path, "trajectory_error_vs_time.png"), format="png", dpi=180)
+        plt.close(error_fig)
+    plt.close(fig)
 
 
 
@@ -1450,6 +1461,3 @@ def plot_memory(figures_path, experiments, sequence_nicknames):
     ...
     
     #plot_table(experiments, 'TIME','num_frames')
-
-
-

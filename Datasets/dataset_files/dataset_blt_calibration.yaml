@@ -1,0 +1,70 @@
+metadata:
+  source: Median of preferred BLT bag CameraInfo samples.
+  note: Common calibration for BLT monthly DPVO experiments.
+calibration:
+  ktima_2022_03:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_04:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_05:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_06:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_07:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_09:
+    source: median preferred BLT bag CameraInfo
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [1054.6407470703125, 1054.6407470703125]
+    principal_point: [952.2294311523438, 553.576904296875]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0

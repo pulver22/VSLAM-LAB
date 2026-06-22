@@ -1,0 +1,5 @@
+exp_blt_dpvo:
+  Config: config_blt.yaml
+  NumRuns: 1
+  Parameters: {mode: mono, max_rgb: 200, verbose: 0}
+  Module: dpvo

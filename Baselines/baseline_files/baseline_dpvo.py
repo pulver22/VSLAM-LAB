@@ -25,7 +25,13 @@ class DPVO_baseline(BaselineVSLAMLab):
         self.camera_models = ['pinhole', 'radtan4', 'radtan5']
         
     def build_execute_command(self, exp_it, exp, dataset, sequence_name):
-        return super().build_execute_command_python(exp_it, exp, dataset, sequence_name)
+        original_settings_yaml = self.settings_yaml
+        if "settings_yaml" in exp.parameters:
+            self.settings_yaml = Path(exp.parameters["settings_yaml"])
+        try:
+            return super().build_execute_command_python(exp_it, exp, dataset, sequence_name)
+        finally:
+            self.settings_yaml = original_settings_yaml
 
     def git_clone(self) -> None:
         super().git_clone()

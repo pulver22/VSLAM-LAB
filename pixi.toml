@@ -115,6 +115,11 @@ download-dataset = "python vslamlab_gui.py download_dataset"
 run-exp = "python vslamlab_gui.py run_exp"
 evaluate-exp = "python vslamlab_gui.py evaluate_exp"
 compare-exp = "python vslamlab_gui.py compare_exp"
+validate-dataset.cmd = 'python validate_dataset.py {{ dataset_name }}'
+validate-dataset.cwd = 'Utilities'
+validate-dataset.args = [
+  { "arg" = "dataset_name", "default" = "eth" },
+]
 
 [feature.vslamlab.dependencies]
 python = "3.13.*"
@@ -145,14 +150,7 @@ viser = "*"
 open3d = "*"
 gdown = "*"
 yt-dlp = "*"
-
-# [feature.development.tasks]
-# validate-dataset.cmd = 'python validate_dataset.py {{ dataset_name }}'
-# validate-dataset.cwd = 'Utilities'
-# validate-dataset.args = [
-#   { "arg" = "dataset_name", "default" = "eth" },
-# ]
-
+rosbags = "*"
 
 # [feature.development.dependencies]
 # rich = "*"

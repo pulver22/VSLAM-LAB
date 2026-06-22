@@ -1,0 +1,70 @@
+metadata:
+  source: Stereolabs ZED2i nominal 2.1mm wide-angle profile derived from published 120deg diagonal FOV and 1920x1080 output.
+  note: Common tracked nominal calibration profile used by default for reproducible BLT experiments; per-bag CameraInfo extraction is opt-in.
+calibration:
+  ktima_2022_03:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_04:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_05:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_06:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_07:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0
+  ktima_2022_09:
+    source: ZED2i nominal 2.1mm wide-angle 120deg diagonal FOV, 1920x1080
+    cam_name: rgb_0
+    cam_type: rgb
+    cam_model: radtan5
+    distortion_type: radtan
+    focal_length: [635.706, 635.706]
+    principal_point: [960.0, 540.0]
+    distortion_coefficients: [0.0, 0.0, 0.0, 0.0, 0.0]
+    image_dimension: [1920, 1080]
+    fps: 10.0

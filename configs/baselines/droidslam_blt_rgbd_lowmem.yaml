@@ -1,0 +1,23 @@
+settings:
+  t0: 0
+  stride: 3
+
+  buffer: 384
+
+  beta: 0.3
+  filter_thresh: 2.4
+  warmup: 8
+
+  keyframe_thresh: 4.0
+  frontend_thresh: 16.0
+  frontend_window: 15
+  frontend_radius: 1
+  frontend_nms: 2
+
+  backend_thresh: 22.0
+  backend_radius: 1
+  backend_nms: 4
+
+  cam_mono: rgb_0
+  cam_rgbd: rgb_0
+  cam_stereo: [rgb_0, rgb_1]
