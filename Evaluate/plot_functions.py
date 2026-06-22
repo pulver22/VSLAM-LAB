@@ -48,6 +48,7 @@ import logging
 from Evaluate.BenchmarkVSLAMLab import BenchmarkVSLAMLab as BM
 
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
 
 def robustMedian(arr):
     return np.nanmedian(arr) if np.isfinite(arr).any() else np.nan
@@ -66,14 +67,17 @@ def _read_tum_trajectory(tum_file: str) -> pd.DataFrame:
         traj.columns = ["ts", "tx", "ty", "tz", "qx", "qy", "qz", "qw"][: len(traj.columns)]
     return traj
 
-def _extract_run_id(accuracy_row_index: int, accuracy_row: pd.Series) -> int:
+def _extract_run_id(accuracy_row_index: int, accuracy_row: pd.Series) -> int | None:
     traj_name = str(accuracy_row.get("traj_name", ""))
     traj_prefix = traj_name.split("_", 1)[0]
     if traj_prefix.isdigit():
         return int(traj_prefix)
     if "exp_it" in accuracy_row and pd.notna(accuracy_row["exp_it"]):
         return int(accuracy_row["exp_it"])
-    return int(accuracy_row_index)
+    if isinstance(accuracy_row_index, (int, np.integer)):
+        return int(accuracy_row_index)
+    logger.warning("Unable to infer run id from accuracy row %s", accuracy_row.to_dict())
+    return None
 
 def plot_trajectories(dataset_sequences, exp_names, 
                       dataset_nicknames, experiments,
@@ -113,6 +117,8 @@ def plot_trajectories(dataset_sequences, exp_names,
                 accu = accuracy_df['rmse']
                 idx = accu.idxmin()
                 run_idx = _extract_run_id(idx, accuracy_df.loc[idx])
+                if run_idx is None:
+                    continue
                 if not aligment_with_gt:                   
 
                     gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_gt.tum')
@@ -1454,4 +1460,3 @@ def plot_memory(figures_path, experiments, sequence_nicknames):
     ...
     
     #plot_table(experiments, 'TIME','num_frames')
-
