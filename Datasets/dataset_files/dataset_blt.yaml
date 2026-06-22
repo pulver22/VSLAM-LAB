@@ -4,7 +4,7 @@ dataset_folder: BLT_dataset
 rgb_hz: 10.0
 modes_env: BLT_MODES
 modes: ["mono"]
-cam_models: ["pinhole"]
+cam_models: ["radtan5"]
 
 source_root_env: BLT_KTIMA_ROOT
 image_topic_env: BLT_IMAGE_TOPIC

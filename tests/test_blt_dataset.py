@@ -94,12 +94,13 @@ def test_blt_dataset_is_registered(tmp_path):
 
     assert "blt" in list_available_datasets()
     assert "blt_calibration" not in list_available_datasets()
+    assert "blt_calibration_factory_camera_info" not in list_available_datasets()
     assert dataset.dataset_name == "blt"
     assert dataset.dataset_folder == "BLT_dataset"
     assert dataset.sequence_names == list(BLT_SEQUENCES)
     assert dataset.sequence_nicknames == [name.replace("_", " ") for name in BLT_SEQUENCES]
     assert dataset.modes == ["mono"]
-    assert dataset.cam_models == ["pinhole"]
+    assert dataset.cam_models == ["radtan5"]
     assert dataset.source_bags == BLT_SEQUENCES
 
 

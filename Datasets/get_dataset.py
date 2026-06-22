@@ -100,7 +100,7 @@ def list_available_datasets() -> list[str]:
             'dataset_' in filename
             and filename.endswith('.yaml')
             and 'utilities' not in filename
-            and not filename.endswith('_calibration.yaml')
+            and '_calibration' not in filename
         ):
             dataset_scripts.append(filename)
 

@@ -66,6 +66,15 @@ def _read_tum_trajectory(tum_file: str) -> pd.DataFrame:
         traj.columns = ["ts", "tx", "ty", "tz", "qx", "qy", "qz", "qw"][: len(traj.columns)]
     return traj
 
+def _extract_run_id(accuracy_row_index: int, accuracy_row: pd.Series) -> int:
+    traj_name = str(accuracy_row.get("traj_name", ""))
+    traj_prefix = traj_name.split("_", 1)[0]
+    if traj_prefix.isdigit():
+        return int(traj_prefix)
+    if "exp_it" in accuracy_row and pd.notna(accuracy_row["exp_it"]):
+        return int(accuracy_row["exp_it"])
+    return int(accuracy_row_index)
+
 def plot_trajectories(dataset_sequences, exp_names, 
                       dataset_nicknames, experiments,
                         accuracies, comparison_path):
@@ -100,11 +109,13 @@ def plot_trajectories(dataset_sequences, exp_names,
                 if accuracies[dataset_name][sequence_name][exp_name].empty:
                     continue
 
-                accu = accuracies[dataset_name][sequence_name][exp_name]['rmse']
+                accuracy_df = accuracies[dataset_name][sequence_name][exp_name]
+                accu = accuracy_df['rmse']
                 idx = accu.idxmin()
+                run_idx = _extract_run_id(idx, accuracy_df.loc[idx])
                 if not aligment_with_gt:                   
 
-                    gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{idx:05d}_gt.tum')
+                    gt_file = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_gt.tum')
                     there_is_gt = False
                     if os.path.exists(gt_file):
                         there_is_gt = True
@@ -118,13 +129,12 @@ def plot_trajectories(dataset_sequences, exp_names,
                         ax.plot(gt_transformed[:, 0]-x_shift, gt_transformed[:, 1]-y_shift, label='gt', linestyle='-', color='black', linewidth=1.5)
                     aligment_with_gt = True
 
-                search_pattern = os.path.join(vslam_lab_evaluation_folder_seq, '*_KeyFrameTrajectory.tum*')
+                search_pattern = os.path.join(vslam_lab_evaluation_folder_seq, f'{run_idx:05d}_KeyFrameTrajectory.tum*')
                 files = glob.glob(search_pattern)
                 if len(files) == 0:
                     continue
                 files.sort()
-                run_idx = min(idx, len(files) - 1)
-                aligned_traj = _read_tum_trajectory(files[run_idx])
+                aligned_traj = _read_tum_trajectory(files[0])
                 pca_df = pd.DataFrame(aligned_traj, columns=['tx', 'ty', 'tz'])
                 if there_is_gt and pca is not None:
                     traj_transformed = pca.transform(pca_df)
@@ -1444,5 +1454,4 @@ def plot_memory(figures_path, experiments, sequence_nicknames):
     ...
     
     #plot_table(experiments, 'TIME','num_frames')
-
 

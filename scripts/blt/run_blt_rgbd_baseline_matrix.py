@@ -77,8 +77,9 @@ def _baseline_availability(baseline_name: str) -> tuple[bool, str, Any]:
     baseline = get_baseline(baseline_name)
     installed, install_msg = baseline.is_installed()
     settings_ok = baseline.settings_yaml.is_file()
-    weights = Path(str(baseline.default_parameters.get("weights", "")))
-    weights_ok = weights.is_file() if weights else True
+    weights_param = baseline.default_parameters.get("weights")
+    weights = Path(str(weights_param)) if weights_param else None
+    weights_ok = weights.is_file() if weights is not None else True
     pixi_cmd = str(PIXI_EXE) if PIXI_EXE.exists() else shutil.which("pixi")
     if not pixi_cmd:
         details = (
