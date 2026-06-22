@@ -68,6 +68,7 @@ def _read_tum_trajectory(tum_file: str) -> pd.DataFrame:
     return traj
 
 def _extract_run_id(accuracy_row_index: int, accuracy_row: pd.Series) -> int | None:
+    """Resolve the evaluated run id from an accuracy row, or None if unavailable."""
     traj_name = str(accuracy_row.get("traj_name", ""))
     traj_prefix = traj_name.split("_", 1)[0]
     if traj_prefix.isdigit():
