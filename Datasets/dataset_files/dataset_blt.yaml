@@ -2,6 +2,7 @@ dataset_name: blt
 dataset_folder: BLT_dataset
 
 rgb_hz: 10.0
+modes_env: BLT_MODES
 modes: ["mono"]
 cam_models: ["pinhole"]
 
@@ -13,6 +14,13 @@ camera_info_topics:
   - /front/zed_node/rgb/camera_info
   - /front/zed_node/left/camera_info
   - /front/zed_node/rgb/image_rect_color/camera_info
+depth_topic_env: BLT_DEPTH_TOPIC
+depth_topic: /depth_republish/compressedDepth
+depth_camera_info_topic_env: BLT_DEPTH_CAMERA_INFO_TOPIC
+depth_camera_info_topics:
+  - /front/zed_node/depth/camera_info
+depth_factor_env: BLT_DEPTH_FACTOR
+depth_factor: 1000.0
 image_transport: compressed
 decompressed_image_topic: /front/zed_node/rgb_decompressed
 groundtruth_topic_env: BLT_GROUNDTRUTH_TOPIC

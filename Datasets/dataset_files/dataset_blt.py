@@ -34,6 +34,13 @@ class BLT_dataset(DatasetVSLAMLab):
             self.dataset_folder = str(cfg["dataset_folder"])
             self.dataset_path = self.benchmark_path / self.dataset_folder
         self.sequence_nicknames = [s.replace("_", " ") for s in self.sequence_names]
+        modes_override = os.environ.get(cfg.get("modes_env", "BLT_MODES"), "")
+        if modes_override:
+            self.modes = [
+                mode.strip()
+                for mode in modes_override.replace(";", ",").split(",")
+                if mode.strip()
+            ]
         self.source_root_env = cfg.get("source_root_env", "BLT_KTIMA_ROOT")
         source_root_value = os.environ.get(self.source_root_env, cfg.get("source_root_default", ""))
         self.source_root = Path(source_root_value).expanduser() if source_root_value else None
@@ -54,7 +61,12 @@ class BLT_dataset(DatasetVSLAMLab):
         )
         if depth_camera_info_override:
             self.depth_camera_info_topics = [depth_camera_info_override]
-        self.depth_factor = float(cfg.get("depth_factor", 1000.0))
+        self.depth_factor = float(
+            os.environ.get(
+                cfg.get("depth_factor_env", "BLT_DEPTH_FACTOR"),
+                cfg.get("depth_factor", 1000.0),
+            )
+        )
         self.image_transport = cfg.get("image_transport", "raw")
         self.decompressed_image_topic = cfg.get("decompressed_image_topic", self.image_topic)
         self.groundtruth_topic = os.environ.get(

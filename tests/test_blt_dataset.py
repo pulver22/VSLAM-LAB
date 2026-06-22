@@ -164,6 +164,9 @@ def test_blt_uses_ros_compressed_transport_launch_defaults(tmp_path):
         "/front/zed_node/left/camera_info",
         "/front/zed_node/rgb/image_rect_color/camera_info",
     ]
+    assert dataset.depth_topic == "/depth_republish/compressedDepth"
+    assert dataset.depth_camera_info_topics == ["/front/zed_node/depth/camera_info"]
+    assert dataset.depth_factor == 1000.0
     assert dataset.image_transport == "compressed"
     assert dataset.decompressed_image_topic == "/front/zed_node/rgb_decompressed"
     assert dataset.get_image_topic_candidates() == [
@@ -769,6 +772,26 @@ def test_blt_extraction_fingerprint_changes_with_source_and_limits(tmp_path, mon
     assert fingerprint["groundtruth_topic"] == "/odometry/gps"
     assert fingerprint["camera_frame"] == "front_left_camera_optical_frame"
     assert fingerprint["use_camera_info_calibration"] is False
+
+
+def test_blt_modes_env_enables_rgbd_fingerprint(tmp_path, monkeypatch):
+    root = tmp_path / "ktima"
+    monkeypatch.setenv("BLT_KTIMA_ROOT", str(root))
+    monkeypatch.setenv("BLT_MODES", "mono,rgbd")
+    monkeypatch.setenv("BLT_DEPTH_TOPIC", "/depth_republish/compressedDepth")
+    monkeypatch.setenv("BLT_DEPTH_CAMERA_INFO_TOPIC", "/front/zed_node/depth/camera_info")
+    monkeypatch.setenv("BLT_DEPTH_FACTOR", "5000.0")
+    dataset = get_dataset("blt", tmp_path)
+
+    fingerprint = dataset._extraction_fingerprint(BLT_SEQUENCE)
+
+    assert dataset.modes == ["mono", "rgbd"]
+    assert dataset.depth_topic == "/depth_republish/compressedDepth"
+    assert dataset.depth_camera_info_topics == ["/front/zed_node/depth/camera_info"]
+    assert fingerprint["modes"] == ["mono", "rgbd"]
+    assert fingerprint["depth_topic"] == "/depth_republish/compressedDepth"
+    assert fingerprint["depth_camera_info_topics"] == ["/front/zed_node/depth/camera_info"]
+    assert fingerprint["depth_factor"] == 5000.0
 
 
 def test_blt_stale_rgb_outputs_are_regenerated_when_fingerprint_changes(tmp_path, monkeypatch):
